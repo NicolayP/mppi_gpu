@@ -22,8 +22,6 @@
  * on the host device.
  */
 
- #define TOL 1e-6
-
 void to_csv(float* x, size_t size, size_t sample){
   std::ofstream outfile;
   // create a name for the file output
@@ -51,7 +49,7 @@ int main(){
   int act_dim = 2;
   int state_dim = 4;
 
-  int n = 1;
+  int n = 20000;
 
   float dt = 1.;
 
@@ -168,14 +166,9 @@ int main(){
     for(int i=0; i<n; i++){
       for (int j=0; j<STEPS; j++){
         for (int k=0; k<state_dim; k++){
-          std::cout << "h[" << i*STEPS*state_dim + j*state_dim + k << "]: " << h_o[i*STEPS*state_dim + j*state_dim + k]
-                    << " x["<< i << "][" << j*state_dim + k << "]: " << x[i][j*state_dim + k]
-                    << " diff: " << h_o[i*STEPS*state_dim + j*state_dim + k] - x[i][j*state_dim + k] << std::endl;
-          //assert(fabs(h_o[i*STEPS*state_dim + j*state_dim + k] - x[i][j*state_dim + k]) < TOL );
+          assert(fabs(h_o[i*STEPS*state_dim + j*state_dim + k] - x[i][j*state_dim + k]) < TOL );
         }
-        std::cout << std::endl;
       }
-      std::cout << std::endl;
     }
     std::cout << "Test passed" << std::endl;
   }
