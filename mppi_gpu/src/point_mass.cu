@@ -11,14 +11,7 @@ __host__ __device__ PointMassModelGpu::PointMassModelGpu(){
   x_ = nullptr;
   u_ = nullptr;
   tau_ = STEPS;
-  u_gain_[0] = dt_*dt_/2.0;
-  u_gain_[1] = dt_;
-  x_gain_[0] = 1;
-  x_gain_[1] = dt_;
-  x_gain_[2] = 0;
-  x_gain_[3] = 1;
   t_ = 1;
-
 }
 
 __host__ __device__ void PointMassModelGpu::init(float* x,
@@ -45,14 +38,18 @@ __host__ __device__ void PointMassModelGpu::init(float* x,
 }
 
 __host__ __device__ void PointMassModelGpu::step(){
+  //printf("a: %4f %4f\n   %4f %4f\n", x_gain_[0], x_gain_[1], x_gain_[2], x_gain_[3]);
+  //printf("b: %4f\n   %4f\n", u_gain_[0], u_gain_[1]);
+  //printf("x: %4f\n   %4f\n" ,  x_[(t_-1)*x_size_ + 0*2], x_[(t_-1)*x_size_+0*2+1]);
+  //printf("u: %4f\n", u_[(t_-1)*x_size_ + 1]);
   for(int i=0; i < 2; i++){
     x_[t_*x_size_+i] = x_gain_[0]*x_[(t_-1)*x_size_+i] +
-           x_gain_[1]*x_[(t_-1)*x_size_+i+1] +
-           u_gain_[0]*u_[(t_-1)*u_size_ + i];
+                         x_gain_[1]*x_[(t_-1)*x_size_+i+2] +
+                         u_gain_[0]*u_[(t_-1)*u_size_ + i];
 
     x_[t_*x_size_+i+2] = x_gain_[2]*x_[(t_-1)*x_size_+i] +
-             x_gain_[3]*x_[(t_-1)*x_size_+i+1] +
-             u_gain_[1]*u_[(t_-1)*x_size_ + i];
+                           x_gain_[3]*x_[(t_-1)*x_size_+i+2] +
+                           u_gain_[1]*u_[(t_-1)*x_size_ + i];
   }
 }
 

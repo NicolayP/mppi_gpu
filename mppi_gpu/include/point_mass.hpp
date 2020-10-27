@@ -1,7 +1,7 @@
 #ifndef __CUDA_CLASS_H__
 #define __CUDA_CLASS_H__
 
-#define STEPS 200
+#define STEPS 20
 
 
 /*
