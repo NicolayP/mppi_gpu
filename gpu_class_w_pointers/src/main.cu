@@ -29,7 +29,7 @@ int main(){
   double delta;
 
 
-  int n = 2000;
+  int n = 10000;
 
   /*
    * copy of our models on host. Should ultimatly
@@ -41,7 +41,7 @@ int main(){
    * Model Gpu wrapper, this will allow to offer one entry
    * interface to the controller that is not device or host specific.
    */
-  Model model = Model(n, STEPS);
+  Model* model = new Model(n, STEPS);
   /*
    * The state data stored on host. In this example,
    * the state is only one scalar but is stored on a
@@ -66,12 +66,12 @@ int main(){
     h_x[i] = 1;
   }
   // send the data on the device.
-  model.memcpy_set_data(h_x);
+  model->memcpy_set_data(h_x);
 
   t1 = std::chrono::system_clock::now();
 
   // run the multiple simulation on the device.
-  model.sim();
+  model->sim();
 
 
   t2 = std::chrono::system_clock::now();
@@ -80,7 +80,7 @@ int main(){
 
 
   // get the data from the device.
-  model.memcpy_get_data(h_o);
+  model->memcpy_get_data(h_o);
 
   // Test if the value in h_x is as expected.
   for(int i=0; i < n; i++){
@@ -129,4 +129,8 @@ int main(){
 
   // free the memory.
   free(h_x);
+  delete models;
+  delete model;
+
+  cudaDeviceReset();
 }

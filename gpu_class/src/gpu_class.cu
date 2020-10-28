@@ -50,8 +50,8 @@ Model::Model(int n){
 }
 
 Model::~Model(){
-  cudaFree(d_x);
-  cudaFree(d_models);
+  cudaFree((void*) d_x);
+  cudaFree((void*) d_models);
 }
 
 void Model::sim(){

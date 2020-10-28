@@ -48,5 +48,8 @@ int main(){
   free(h_a);
   free(h_b);
 
+
+  cudaDeviceReset();
+  
   return 0;
 }

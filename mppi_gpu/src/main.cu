@@ -78,18 +78,24 @@ bool test_sim_gpu(float* data,
 
   std::cout << "Sequencial execution time: " << delta << "ms" << std::endl;
 
-
+  bool error=true;
   // free the memory.
   for(int i=0; i<samples; i++){
     for (int j=0; j<STEPS; j++){
       for (int k=0; k<state_dim; k++){
         if (!fabs(data[i*STEPS*state_dim + j*state_dim + k] - x[i][j*state_dim + k]) < TOL ){
-          return false;
+          error=false;
         }
       }
     }
   }
-  return true;
+  for(int i=0; i < samples; i++){
+    free(x[i]);
+  }
+  free(x);
+  free(u);
+  delete models;
+  return error;
 }
 
 void to_csv(std::string filename, float* x, size_t size, size_t sample){
@@ -121,12 +127,14 @@ int main(){
   int act_dim = 2;
   int state_dim = 4;
 
-  int n = 10000;
+  int n = 10;
 
   float dt = 1.;
 
+  bool test = false;
 
-  PointMassModel model = PointMassModel(n, STEPS, dt);
+
+  PointMassModel* model = new PointMassModel(n, STEPS, dt);
   /*
    * The state data stored on host. In this example,
    * the state is only one scalar but is stored on a
@@ -157,12 +165,12 @@ int main(){
     }
   }
   // send the data on the device.
-  model.memcpy_set_data(h_x, h_u);
+  model->memcpy_set_data(h_x, h_u);
 
   t1 = std::chrono::system_clock::now();
 
   // run the multiple simulation on the device.
-  model.sim();
+  model->sim();
 
 
   t2 = std::chrono::system_clock::now();
@@ -172,13 +180,14 @@ int main(){
   std::cout << "GPU execution time: " << delta << "ms" << std::endl;
 
   // get the data from the device.
-  model.memcpy_get_data(h_o);
+  model->memcpy_get_data(h_o);
 
 
   //to_csv(filename, h_o, STEPS, n);
-
-  if(test_sim_gpu(h_o, n, state_dim, act_dim, dt, 0.01, 0.0)){
-    std::cout << "Test passed!" << std::endl;
+  if(test){
+    if(test_sim_gpu(h_o, n, state_dim, act_dim, dt, 0.01, 0.0)){
+      std::cout << "Test passed!" << std::endl;
+    }
   }
 
   std::cout << "Freeing memory... : " << std::flush;
@@ -186,4 +195,8 @@ int main(){
   free(h_o);
   free(h_u);
   std::cout << "Done" << std::endl;
+
+  delete model;
+  cudaDeviceReset();
+  //cuCtxDestroy();
 }

@@ -127,11 +127,12 @@ PointMassModel::PointMassModel(int nb_sim, int steps, float dt){
 }
 
 PointMassModel::~PointMassModel(){
-  cudaFree(d_x);
-  cudaFree(d_x_i);
-  cudaFree(d_models);
-  cudaFree(state_gain);
-  cudaFree(act_gain);
+  cudaFree((void*)d_x);
+  cudaFree((void*)d_x_i);
+  cudaFree((void*)d_u);
+  cudaFree((void*)state_gain);
+  cudaFree((void*)act_gain);
+  cudaFree((void*)d_models);
 }
 
 void PointMassModel::sim(){
