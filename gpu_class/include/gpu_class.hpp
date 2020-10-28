@@ -1,7 +1,7 @@
 #ifndef __CUDA_CLASS_H__
 #define __CUDA_CLASS_H__
 
-#define STEPS 100000
+#define STEPS 10
 
 class ModelGpu{
 public:
