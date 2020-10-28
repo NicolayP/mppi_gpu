@@ -1,4 +1,5 @@
 #include "point_mass.hpp"
+#include <curand_kernel.h>
 #include <iostream>
 /*__global__ void kernel(Model* model, int n){
   int tid = blockDim.x * blockIdx.x + threadIdx.x;

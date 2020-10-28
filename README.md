@@ -8,7 +8,9 @@
       cuda-memcheck -leak-check full ./app
     ```
   - [ ] add randomness to the threads.
-  - [ ] plot trajectories to see their validity.
+    Currently looking at cuRAND.
+    look at: Device cuRAND distribution functions.
+  - [x] plot trajectories to see their validity.
   - [ ] create cost class (get insp from the python class).
   - [ ] add cost.
   - [ ] finish algo as mentioned in the point_mass.cu example.

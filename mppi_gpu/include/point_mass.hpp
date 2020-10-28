@@ -1,7 +1,7 @@
 #ifndef __CUDA_CLASS_H__
 #define __CUDA_CLASS_H__
 
-#define STEPS 5
+#define STEPS 200
 #define TOL 1e-6
 
 

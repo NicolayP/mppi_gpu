@@ -127,11 +127,13 @@ int main(){
   int act_dim = 2;
   int state_dim = 4;
 
-  int n = 10;
+  int n = 1;
 
   float dt = 1.;
 
   bool test = false;
+  bool save = true;
+  std::string filename("to_plot.csv");
 
 
   PointMassModel* model = new PointMassModel(n, STEPS, dt);
@@ -161,7 +163,7 @@ int main(){
     h_x[i*state_dim+3] = 0.;
     for (int j=0; j < STEPS; j++){
       h_u[(i*STEPS*act_dim)+(j*act_dim)+0] = 0.01;
-      h_u[(i*STEPS*act_dim)+(j*act_dim)+1] = 0.01;
+      h_u[(i*STEPS*act_dim)+(j*act_dim)+1] = 0.005;
     }
   }
   // send the data on the device.
@@ -182,8 +184,10 @@ int main(){
   // get the data from the device.
   model->memcpy_get_data(h_o);
 
+  if(save){
+    to_csv(filename, h_o, STEPS, n);
+  }
 
-  //to_csv(filename, h_o, STEPS, n);
   if(test){
     if(test_sim_gpu(h_o, n, state_dim, act_dim, dt, 0.01, 0.0)){
       std::cout << "Test passed!" << std::endl;
