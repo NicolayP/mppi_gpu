@@ -3,11 +3,11 @@
 ## TODO:
   - [X] verify device execution.
   - [X] time comparaison with serial code.
-  - [x] checking for memory leaks with cuda-memcheck.
+  - [X] checking for memory leaks with cuda-memcheck.
     ```
       cuda-memcheck -leak-check full ./app
     ```
-  - [ ] add randomness to the threads.
+  - [X] add randomness to the threads.
     Currently looking at cuRAND.
     look at: Device cuRAND distribution functions.
   - [x] plot trajectories to see their validity.
@@ -37,3 +37,7 @@
 
   - Changed variables to class to pointer to class.
   called delet explicitly. Now no memory leak.
+
+  - Added cuRAND lib to the project. This allows us to generate the input samples
+  on the gpu. Removing the delay of transfering the data from the host to the device.
+  - Need to pay attention to the rng_State. The state is copied on the local memory, then updated with the sampling process and copied back to the global memory after the computation.
