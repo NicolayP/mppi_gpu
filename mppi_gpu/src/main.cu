@@ -143,7 +143,7 @@ int main(){
     int act_dim = 2;
     int state_dim = 4;
 
-    int n = 2000;
+    int n = 5;
 
     float dt = 0.1;
 
@@ -166,23 +166,42 @@ int main(){
     * in device memory. so a int* array will be easier to work with.
     */
     float* h_o;
+    float* h_e;
+
+    float* goal;
+    float* w;
     // allocate and init and res data.
     h_x = (float*) malloc(sizeof(float)*n*state_dim);
-    h_u = (float*) malloc(sizeof(float)*n*STEPS*act_dim);
+    h_u = (float*) malloc(sizeof(float)*STEPS*act_dim);
 
     h_o = (float*) malloc(sizeof(float)*n*STEPS*state_dim);
+    h_e = (float*) malloc(sizeof(float)*n*STEPS*act_dim);
+
+    goal = (float*) malloc(sizeof(float)*state_dim);
+    goal[0] = 1.0;
+    goal[1] = 0.0;
+    goal[2] = 0.0;
+    goal[3] = 0.0;
+
+    w = (float*) malloc(sizeof(float)*state_dim);
+    w[0] = 1.0;
+    w[1] = 1.0;
+    w[2] = 1.0;
+    w[3] = 1.0;
+
     for (int i=0; i < n; i++){
         h_x[i*state_dim+0] = 0.;
         h_x[i*state_dim+1] = 0.;
         h_x[i*state_dim+2] = 0.;
         h_x[i*state_dim+3] = 0.;
-        for (int j=0; j < STEPS; j++){
-            h_u[(i*STEPS*act_dim)+(j*act_dim)+0] = 0.;
-            h_u[(i*STEPS*act_dim)+(j*act_dim)+1] = 0.;
-        }
+    }
+
+    for (int j=0; j < STEPS; j++){
+        h_u[(j*act_dim)+0] = 0.;
+        h_u[(j*act_dim)+1] = 0.;
     }
     // send the data on the device.
-    model->memcpy_set_data(h_x, h_u);
+    model->memcpy_set_data(h_x, h_u, goal, w);
 
     t1 = std::chrono::system_clock::now();
 
@@ -197,7 +216,7 @@ int main(){
     std::cout << "GPU execution time: " << delta << "ms" << std::endl;
 
     // get the data from the device.
-    model->memcpy_get_data(h_o, h_u);
+    model->memcpy_get_data(h_o, h_e);
 
     /*
     for (int i = 0; i < n; i ++){

@@ -1,11 +1,12 @@
-#ifndef __CUDA_CLASS_H__
-#define __CUDA_CLASS_H__
+#ifndef __CUDA_CLASS_HPP__
+#define __CUDA_CLASS_HPP__
 
 #include <curand.h>
 #include <curand_kernel.h>
+#include "cost.hpp"
 
 
-#define STEPS 2000
+#define STEPS 20
 #define TOL 1e-6
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {\
@@ -26,10 +27,13 @@
      __host__ __device__ void init(float* x,
                                    float init,
                                    float* u,
+                                   float* e,
                                    float* x_gain,
                                    int x_size,
                                    float* u_gain,
-                                   int u_size);
+                                   int u_size,
+                                   float* w,
+                                   float* goal);
      __host__ __device__ void step(curandState* state);
      __host__ __device__ void run(curandState* state);
      __host__ __device__ void set_state(float* x);
@@ -39,21 +43,35 @@
 
  private:
      // Current timestep
-     int t_;
+     int _t;
      // Horizon
-     int tau_;
+     int _tau;
 
-     int dt_;
+     float _dt;
      // Action pointer.
-     float* u_;
+     float* _u;
      // State pointer.
      float* x_;
 
      // LTI:
-     float* x_gain_;
-     float* u_gain_;
-     int x_size_;
-     int u_size_;
+     float* _x_gain;
+     float* _u_gain;
+     int _x_size;
+     int _u_size;
+
+     float* g;
+     float* w;
+
+     float* _e;
+
+     //sigma and its inverse.
+     float* _s;
+     float* _inv_s;
+
+     // Cost object
+     Cost _cost;
+     // contains cumulative cost.
+     float _c;
 
  };
 
@@ -61,32 +79,39 @@
  // and execution state of the device as reported by cuda.
  class PointMassModel{
  public:
-     PointMassModel(int n, int steps, float dt);
+     PointMassModel(size_t nb_sim, size_t steps, float dt);
      ~PointMassModel();
      void sim();
-     void memcpy_set_data(float* x, float* u);
-     void memcpy_get_data(float* x_all, float* u);
+     void memcpy_set_data(float* x, float* u, float* goal, float* w);
+     void memcpy_get_data(float* x_all, float* e);
      //void set_steps(int steps);
      //int get_steps();
      //void set_nb_sim(int n);
      //int get_nb_sim();
  private:
-     int n_sim_;
-     int steps_;
+     size_t n_sim_;
+     size_t steps_;
      size_t bytes_;
+
      float* d_x;
      float* d_u;
+     float* d_e;
      // value to set up inital state vector.
      float* d_x_i;
+
      PointMassModelGpu* d_models;
 
+     /* Goal vector passed to the cost function */
+     float* d_g;
+     /* Weight vector */
+     float* d_w;
 
      float* state_gain;
-     int state_dim;
+     size_t state_dim;
      float* act_gain;
-     int act_dim;
+     size_t act_dim;
 
-     float dt_;
+     float _dt;
 
      curandState* rng_states;
  };
@@ -95,18 +120,24 @@
  * Set of global function that the class Model will use to
  * run kernels.
  */
-__global__ void sim_gpu_kernel_(PointMassModelGpu* d_models, int n_, float* d_u, curandState* rng_states);
+__global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
+                                size_t n_,
+                                float* d_u,
+                                curandState* rng_states);
 
 __global__ void set_data_(PointMassModelGpu* d_models,
                           float* d_x_i,
                           float* d_x,
                           float* d_u,
-                          int n_sim,
-                          int steps,
+                          float* d_e,
+                          size_t n_sim,
+                          size_t steps,
                           float* state_gain,
-                          int state_dim,
+                          size_t state_dim,
                           float* act_gain,
-                          int act_dim,
-                          curandState* rng_states);
+                          size_t act_dim,
+                          curandState* rng_states,
+                          float* goal,
+                          float* w);
 
 #endif

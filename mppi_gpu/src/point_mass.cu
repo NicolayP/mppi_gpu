@@ -5,58 +5,99 @@
 
 __host__ __device__ PointMassModelGpu::PointMassModelGpu(){
     x_ = nullptr;
-    u_ = nullptr;
-    tau_ = STEPS;
-    t_ = 1;
+    _u = nullptr;
+    _e = nullptr;
+    _tau = STEPS;
+    _t = 1;
+    float lambda = 1.0;
+    /*
+    // Local copy of the weight and the goal.
+    float* w = (float*) malloc(sizeof(float)*x_size);
+    float* g = (float*) malloc(sizeof(float)*x_size);
+    for (int i = 0; i < x_size; i++)
+    {
+        w[i] = weight[i];
+        g[i] = goal[i];
+    }
+    _cost = Cost(w, x_size, g, x_size, lambda);
+    _c = 0;*/
 }
 
 __host__ __device__ void PointMassModelGpu::init(float* x,
                                                  float init,
                                                  float* u,
+                                                 float* e,
                                                  float* x_gain,
                                                  int x_size,
                                                  float* u_gain,
-                                                 int u_size){
+                                                 int u_size,
+                                                 float* weight,
+                                                 float* goal){
     // TODO: cache x* in sm memory for faster access
     x_ = x;
-    u_ = u;
+    _u = u;
     x_[0] = init;
-    tau_ = STEPS;
+    _tau = STEPS;
     // Point the gain pointers to the right address
-    x_gain_ = x_gain;
-    x_size_ = x_size;
+    _x_gain = x_gain;
+    _x_size = x_size;
 
-    u_gain_ = u_gain;
-    u_size_ = u_size;
+    _u_gain = u_gain;
+    _u_size = u_size;
 
-    t_ = 1;
+    _t = 1;
+    float lambda = 1.0;
+    // Local copy of the weight and the goal.
+    w = (float*) malloc(sizeof(float)*x_size);
+    g = (float*) malloc(sizeof(float)*x_size);
+    // local copy of the error for faster access
+    _e = (float*) malloc(sizeof(float)*STEPS*_u_size);
+
+    _inv_s = (float*) malloc(sizeof(float)*_u_size);
+    _inv_s[0] = 1.0;
+    _inv_s[1] = 1.0;
+
+    for (int i = 0; i < x_size; i++)
+    {
+        w[i] = weight[i];
+        g[i] = goal[i];
+    }
+    for (int i = 0; i < STEPS; i++){
+        _e[i*_u_size + 0] = e[i*_u_size + 0];
+        _e[i*_u_size + 1] = e[i*_u_size + 1];
+    }
+    _cost = Cost::Cost(w, x_size, g, x_size, lambda, _inv_s, u_size);
+    _c = 0;
     return;
 }
 
 __host__ __device__ void PointMassModelGpu::step(curandState* state){
 
 #ifdef __CUDA_ARCH__
-    u_[(t_-1)*u_size_] += curand_normal(state);
-    u_[(t_-1)*u_size_ + 1] += curand_normal(state);
+    _e[(_t-1)*_u_size] += curand_normal(state);
+    _e[(_t-1)*_u_size + 1] += curand_normal(state);
 #else
-    u_[(t_-1)*u_size_] += 0; //cpu random uniform;
-    u_[(t_-1)*u_size_ + 1] += 0; //cpu random uniform;
+    _e[(_t-1)*_u_size] += 0; //cpu random uniform;
+    _e[(_t-1)*_u_size + 1] += 0; //cpu random uniform;
 #endif
     for(int i=0; i < 2; i++){
-        x_[t_*x_size_+i] = x_gain_[0]*x_[(t_-1)*x_size_+i] +
-        x_gain_[1]*x_[(t_-1)*x_size_+i+2] +
-        u_gain_[0]*u_[(t_-1)*u_size_ + i];
+        x_[_t*_x_size+i] = _x_gain[0]*x_[(_t-1)*_x_size+i] +
+        _x_gain[1]*x_[(_t-1)*_x_size+i+2] +
+        _u_gain[0]*(_u[(_t-1)*_u_size + i] + _e[(_t-1)*_u_size + i]);
 
-        x_[t_*x_size_+i+2] = x_gain_[2]*x_[(t_-1)*x_size_+i] +
-        x_gain_[3]*x_[(t_-1)*x_size_+i+2] +
-        u_gain_[1]*u_[(t_-1)*u_size_ + i];
+        x_[_t*_x_size+i+2] = _x_gain[2]*x_[(_t-1)*_x_size+i] +
+        _x_gain[3]*x_[(_t-1)*_x_size+i+2] +
+        _u_gain[1]*(_u[(_t-1)*_u_size + i] + _e[(_t-1)*_u_size + i]);
     }
+    _c += _cost.step_cost(&x_[_t*_x_size], &_u[(_t-1)*_u_size], &_e[(_t-1)*_u_size]);
 }
 
 __host__ __device__ void PointMassModelGpu::run(curandState* state){
-    for (t_ = 1; t_ < tau_; t_++ ){
+    for (_t = 1; _t < _tau; _t++ ){
         step(state);
     }
+    _c += _cost.final_cost(&x_[_t*_x_size]);
+    printf("%f\n", _c);
 }
 
 __host__ __device__ void PointMassModelGpu::set_state(float* x){
@@ -71,21 +112,21 @@ __host__ __device__ void PointMassModelGpu::set_horizon(int horizon){
     * produce a seg fault and probably leave the memory in a inconsistant
     * state.
     */
-    tau_ = horizon;
+    _tau = horizon;
 }
 
 __host__ __device__ float* PointMassModelGpu::get_state(){ return x_;}
 
-__host__ __device__ int PointMassModelGpu::get_horizon(){ return tau_;}
+__host__ __device__ int PointMassModelGpu::get_horizon(){ return _tau;}
 
 
-PointMassModel::PointMassModel(int nb_sim, int steps, float dt){
+PointMassModel::PointMassModel(size_t nb_sim, size_t steps, float dt){
     n_sim_ = nb_sim;
     steps_ = steps;
     act_dim = 2;
     state_dim = 4;
 
-    dt_ = dt;
+    _dt = dt;
 
 
     /*
@@ -93,16 +134,16 @@ PointMassModel::PointMassModel(int nb_sim, int steps, float dt){
     * template type associated with the class wich will
     * represent the mppi domain.
     */
-    bytes_ = sizeof(int)*steps_*n_sim_*state_dim;
+    bytes_ = sizeof(float)*steps_*n_sim_*state_dim;
 
     //host data used to send data to memory.
     float state_[4];
     float act_[2];
 
-    act_[0] = dt_*dt_/2.0;
-    act_[1] = dt_;
+    act_[0] = _dt*_dt/2.0;
+    act_[1] = _dt;
     state_[0] = 1;
-    state_[1] = dt_;
+    state_[1] = _dt;
     state_[2] = 0;
     state_[3] = 1;
 
@@ -117,7 +158,11 @@ PointMassModel::PointMassModel(int nb_sim, int steps, float dt){
     // set the memory with 0s.
     cudaMemset((void*)d_x, 0, sizeof(float)*n_sim_*steps_*state_dim);
     // allocate space for action.
-    cudaMalloc((void**)&d_u, sizeof(float)*n_sim_*steps_*act_dim);
+    cudaMalloc((void**)&d_e, sizeof(float)*n_sim_*steps_*act_dim);
+
+    cudaMemset((void*)d_e, 0, sizeof(float)*n_sim_*steps_*act_dim);
+
+    cudaMalloc((void**)&d_u, sizeof(float)*steps_*act_dim);
 
     // Set gain memory
     cudaMalloc((void**)&state_gain, sizeof(float)*state_dim);
@@ -128,6 +173,9 @@ PointMassModel::PointMassModel(int nb_sim, int steps, float dt){
 
     cudaMalloc((void**)&rng_states, sizeof(curandState_t)*n_sim_);
 
+    cudaMalloc((void**)&d_g, sizeof(float)*state_dim);
+    cudaMalloc((void**)&d_w, sizeof(float)*state_dim);
+
     cudaDeviceSynchronize();
     std::cout << "Done" << std::endl;
 }
@@ -136,6 +184,7 @@ PointMassModel::~PointMassModel(){
     cudaFree((void*)d_x);
     cudaFree((void*)d_x_i);
     cudaFree((void*)d_u);
+    cudaFree((void*)d_e);
     cudaFree((void*)state_gain);
     cudaFree((void*)act_gain);
     cudaFree((void*)d_models);
@@ -149,40 +198,46 @@ void PointMassModel::sim(){
     // using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
     // and threadIdx.y & threadIdx.z.
     std::cout << "Starting simulations... : " << std::flush;
-    sim_gpu_kernel_<<<1 + n_sim_/256, 256>>>(d_models, n_sim_, d_u, rng_states);
+    sim_gpu_kernel_<<<1 + n_sim_/256, 256>>>(d_models, n_sim_, d_e, rng_states);
     std::cout << "simulations finished!" << std::endl;
     cudaDeviceSynchronize();
 }
 
-void PointMassModel::memcpy_set_data(float* x, float* u){
+void PointMassModel::memcpy_set_data(float* x, float* u, float* goal, float* w){
     cudaMemcpy(d_x_i, x, sizeof(float)*n_sim_*state_dim, cudaMemcpyHostToDevice);
     cudaMemcpy(d_u, u, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_g, goal, sizeof(float)*state_dim, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_w, w, sizeof(float)*state_dim, cudaMemcpyHostToDevice);
     std::cout << "Setting inital state of the sims... : " << std::flush;
     set_data_<<<1 + n_sim_/256, 256>>>(d_models,
                                         d_x_i,
                                         d_x,
                                         d_u,
+                                        d_e,
                                         n_sim_,
                                         steps_,
                                         state_gain,
                                         state_dim,
                                         act_gain,
                                         act_dim,
-                                        rng_states);
+                                        rng_states,
+                                        d_g,
+                                        d_w);
     std::cout << "Done" << std::endl;
     cudaDeviceSynchronize();
 }
 
-void PointMassModel::memcpy_get_data(float* x_all, float* u){
+void PointMassModel::memcpy_get_data(float* x_all, float* e){
     cudaMemcpy(x_all, d_x, bytes_, cudaMemcpyDeviceToHost);
-    cudaMemcpy(u, d_u, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyDeviceToHost);
+    cudaMemcpy(e, d_e, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
 }
 
 __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
-                                int n_sim_,
+                                size_t n_sim_,
                                 float* d_u,
-                                curandState* rng_states){
+                                curandState* rng_states)
+{
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if(tid < n_sim_){
@@ -217,16 +272,29 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                           float* d_x_i,
                           float* d_x,
                           float* d_u,
-                          int n_sim,
-                          int steps,
+                          float* d_e,
+                          size_t n_sim,
+                          size_t steps,
                           float* state_gain,
-                          int state_dim,
+                          size_t state_dim,
                           float* act_gain,
-                          int act_dim,
-                          curandState* rng_states){
+                          size_t act_dim,
+                          curandState* rng_states,
+                          float* goal,
+                          float* w)
+{
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if(tid < n_sim){
-        curand_init(tid*64, tid, tid, &rng_states[tid]);
-        d_models[tid].init(&d_x[tid*steps*state_dim], d_x_i[tid], &d_u[tid*steps*act_dim], state_gain, 4, act_gain, 2);
+        curand_init(tid, tid, tid, &rng_states[tid]);
+        d_models[tid].init(&d_x[tid*steps*state_dim],
+                            d_x_i[tid],
+                            d_u,
+                            &d_e[tid*steps*act_dim],
+                            state_gain,
+                            state_dim,
+                            act_gain,
+                            act_dim,
+                            w,
+                            goal);
     }
 }
