@@ -4,7 +4,7 @@
 
 
 __host__ __device__ PointMassModelGpu::PointMassModelGpu(){
-    x_ = nullptr;
+    _x = nullptr;
     _u = nullptr;
     _e = nullptr;
     _tau = STEPS;
@@ -34,9 +34,9 @@ __host__ __device__ void PointMassModelGpu::init(float* x,
                                                  float* weight,
                                                  float* goal){
     // TODO: cache x* in sm memory for faster access
-    x_ = x;
+    _x = x;
     _u = u;
-    x_[0] = init;
+    _x[0] = init;
     _tau = STEPS;
     // Point the gain pointers to the right address
     _x_gain = x_gain;
@@ -48,8 +48,8 @@ __host__ __device__ void PointMassModelGpu::init(float* x,
     _t = 1;
     float lambda = 1.0;
     // Local copy of the weight and the goal.
-    w = (float*) malloc(sizeof(float)*x_size);
-    g = (float*) malloc(sizeof(float)*x_size);
+    _w = (float*) malloc(sizeof(float)*_x_size);
+    _g = (float*) malloc(sizeof(float)*_x_size);
     // local copy of the error for faster access
     _e = (float*) malloc(sizeof(float)*STEPS*_u_size);
 
@@ -57,16 +57,16 @@ __host__ __device__ void PointMassModelGpu::init(float* x,
     _inv_s[0] = 1.0;
     _inv_s[1] = 1.0;
 
-    for (int i = 0; i < x_size; i++)
+    for (int i = 0; i < _x_size; i++)
     {
-        w[i] = weight[i];
-        g[i] = goal[i];
+        _w[i] = weight[i];
+        _g[i] = goal[i];
     }
     for (int i = 0; i < STEPS; i++){
         _e[i*_u_size + 0] = e[i*_u_size + 0];
         _e[i*_u_size + 1] = e[i*_u_size + 1];
     }
-    _cost = Cost::Cost(w, x_size, g, x_size, lambda, _inv_s, u_size);
+    _cost = Cost::Cost(_w, _x_size, _g, _x_size, lambda, _inv_s, u_size);
     _c = 0;
     return;
 }
@@ -81,27 +81,27 @@ __host__ __device__ void PointMassModelGpu::step(curandState* state){
     _e[(_t-1)*_u_size + 1] += 0; //cpu random uniform;
 #endif
     for(int i=0; i < 2; i++){
-        x_[_t*_x_size+i] = _x_gain[0]*x_[(_t-1)*_x_size+i] +
-        _x_gain[1]*x_[(_t-1)*_x_size+i+2] +
+        _x_[_t*_x_size+i] = _x_gain[0]*_x_[(_t-1)*_x_size+i] +
+        _x_gain[1]*_x[(_t-1)*_x_size+i+2] +
         _u_gain[0]*(_u[(_t-1)*_u_size + i] + _e[(_t-1)*_u_size + i]);
 
-        x_[_t*_x_size+i+2] = _x_gain[2]*x_[(_t-1)*_x_size+i] +
-        _x_gain[3]*x_[(_t-1)*_x_size+i+2] +
+        _x[_t*_x_size+i+2] = _x_gain[2]*_x[(_t-1)*_x_size+i] +
+        _x_gain[3]*_x[(_t-1)*_x_size+i+2] +
         _u_gain[1]*(_u[(_t-1)*_u_size + i] + _e[(_t-1)*_u_size + i]);
     }
-    _c += _cost.step_cost(&x_[_t*_x_size], &_u[(_t-1)*_u_size], &_e[(_t-1)*_u_size]);
+    _c += _cost.step_cost(&_x[_t*_x_size], &_u[(_t-1)*_u_size], &_e[(_t-1)*_u_size]);
 }
 
 __host__ __device__ void PointMassModelGpu::run(curandState* state){
     for (_t = 1; _t < _tau; _t++ ){
         step(state);
     }
-    _c += _cost.final_cost(&x_[_t*_x_size]);
+    _c += _cost.final_cost(&_x[_t*_x_size]);
     printf("%f\n", _c);
 }
 
 __host__ __device__ void PointMassModelGpu::set_state(float* x){
-    x_ = x;
+    _x = x;
 }
 
 __host__ __device__ void PointMassModelGpu::set_horizon(int horizon){
@@ -115,7 +115,7 @@ __host__ __device__ void PointMassModelGpu::set_horizon(int horizon){
     _tau = horizon;
 }
 
-__host__ __device__ float* PointMassModelGpu::get_state(){ return x_;}
+__host__ __device__ float* PointMassModelGpu::get_state(){ return _x;}
 
 __host__ __device__ int PointMassModelGpu::get_horizon(){ return _tau;}
 

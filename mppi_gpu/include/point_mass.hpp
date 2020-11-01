@@ -51,7 +51,7 @@
      // Action pointer.
      float* _u;
      // State pointer.
-     float* x_;
+     float* _x;
 
      // LTI:
      float* _x_gain;
@@ -59,8 +59,8 @@
      int _x_size;
      int _u_size;
 
-     float* g;
-     float* w;
+     float* _g;
+     float* _w;
 
      float* _e;
 
