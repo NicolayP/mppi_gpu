@@ -33,9 +33,10 @@
                                    float* u_gain,
                                    int u_size,
                                    float* w,
-                                   float* goal);
+                                   float* goal,
+                                   float lambda);
      __host__ __device__ void step(curandState* state);
-     __host__ __device__ void run(curandState* state);
+     __host__ __device__ float run(curandState* state);
      __host__ __device__ void set_state(float* x);
      __host__ __device__ void set_horizon(int horizon);
      __host__ __device__ float* get_state();
@@ -84,6 +85,8 @@
      void sim();
      void memcpy_set_data(float* x, float* u, float* goal, float* w);
      void memcpy_get_data(float* x_all, float* e);
+     void min_beta();
+     void nabla();
      //void set_steps(int steps);
      //int get_steps();
      //void set_nb_sim(int n);
@@ -98,6 +101,10 @@
      float* d_e;
      // value to set up inital state vector.
      float* d_x_i;
+     float* d_cost;
+     float* d_beta;
+     float* d_nabla;
+     float* d_lambda;
 
      PointMassModelGpu* d_models;
 
@@ -116,6 +123,11 @@
      curandState* rng_states;
  };
 
+ __global__ void min_red(float* v, float* beta, int n);
+
+ __global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, int n);
+
+__global__ void sum_red(float* v, float* v_r, int n);
 /*
  * Set of global function that the class Model will use to
  * run kernels.
@@ -138,6 +150,7 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                           size_t act_dim,
                           curandState* rng_states,
                           float* goal,
-                          float* w);
+                          float* w,
+                          float lambda);
 
 #endif
