@@ -11,14 +11,19 @@
     Currently looking at cuRAND.
     look at: Device cuRAND distribution functions.
   - [x] plot trajectories to see their validity.
-  - [ ] create cost class (get insp from the python class).
-  - [ ] add cost.
+  - [x] create cost class (get insp from the python class).
+  - [x] add cost.
+  - [x] implement generic reduction algorithm for sum and min.
   - [ ] finish algo as mentioned in the point_mass.cu example.
   - [ ] generalize the code.
   - [ ] try mujoco simulation.
   - [ ] start UUV integration (add for ros expert help).
   - [ ] write AUV math model.
   - [ ] start NN or GP integration.
+
+## TODO:
+    need to look at the returned value of the min and beta reduction function.
+    This is probably the cause of the segfault at the end.
 
 ## Changes LOG:
 
@@ -41,3 +46,5 @@
   - Added cuRAND lib to the project. This allows us to generate the input samples
   on the gpu. Removing the delay of transfering the data from the host to the device.
   - Need to pay attention to the rng_State. The state is copied on the local memory, then updated with the sampling process and copied back to the global memory after the computation.
+
+  - added a reduction algorithm used for the min and add functions on a array. This is used to find the minimal cost and compute the normalisation term.
