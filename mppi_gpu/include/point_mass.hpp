@@ -6,7 +6,7 @@
 #include "cost.hpp"
 
 
-#define STEPS 20
+#define STEPS 2000
 #define TOL 1e-6
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {\
@@ -151,6 +151,6 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                           curandState* rng_states,
                           float* goal,
                           float* w,
-                          float lambda);
+                          float* lambda);
 
 #endif

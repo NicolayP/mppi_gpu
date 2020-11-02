@@ -262,7 +262,7 @@ void PointMassModel::memcpy_set_data(float* x, float* u, float* goal, float* w)
                                         rng_states,
                                         d_g,
                                         d_w,
-                                        d_lambda[0]);
+                                        d_lambda);
     std::cout << "Done" << std::endl;
     cudaDeviceSynchronize();
 }
@@ -276,6 +276,7 @@ void PointMassModel::memcpy_get_data(float* x_all, float* e)
 
 void PointMassModel::min_beta()
 {
+    std::cout << "Finding beta" << std::endl;
     float* _d_beta;
     size_t _n_sim(n_sim_);
     // TB Size
@@ -289,15 +290,20 @@ void PointMassModel::min_beta()
     // computation time
     cudaMalloc((void**)&_d_beta, sizeof(float)*GRID_SIZE);
 
+    std::cout << "Allocated device beta memory" << std::endl;
 
     if (GRID_SIZE == 1)
     {
+        std::cout << "Run only once...: " << std::flush;
         min_red << <1, BLOCK_SIZE >> > (d_cost, _d_beta, _n_sim);
+        std::cout << "Done" << std::endl;
     }
     else
     {
         // insure at least one pass.
+        std::cout << "Run first...: " << std::flush;
         min_red << <GRID_SIZE, BLOCK_SIZE >> > (d_cost, _d_beta, _n_sim);
+        std::cout << "Done" << std::endl;
 
         _n_sim = GRID_SIZE;
         GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
@@ -308,9 +314,13 @@ void PointMassModel::min_beta()
             _n_sim = GRID_SIZE;
             GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
         }
+        std::cout << "Run last...: " << std::flush;
         min_red << <1, BLOCK_SIZE >> > (_d_beta, _d_beta, _n_sim);
+        std::cout << "Done" << std::endl;
     }
-    d_beta[0] = _d_beta[0];
+
+    cudaMemcpy(d_beta, _d_beta, sizeof(float), cudaMemcpyDeviceToDevice);
+    //d_beta[0] = _d_beta[0];
 
     cudaFree(_d_beta);
 }
@@ -348,7 +358,7 @@ void PointMassModel::nabla()
         }
         sum_red << <1, BLOCK_SIZE >> > (_d_nabla, _d_nabla, _n_sim);
     }
-    d_nabla[0] = _d_nabla[0];
+    cudaMemcpy(d_nabla, _d_nabla, sizeof(float), cudaMemcpyDeviceToDevice);
     cudaFree(_d_nabla);
 }
 
@@ -538,7 +548,7 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                           curandState* rng_states,
                           float* goal,
                           float* w,
-                          float lambda)
+                          float* lambda)
 {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     if(tid < n_sim){
@@ -553,6 +563,6 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                             act_dim,
                             w,
                             goal,
-                            lambda);
+                            lambda[0]);
     }
 }
