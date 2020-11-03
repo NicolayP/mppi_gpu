@@ -14,6 +14,8 @@
   - [x] create cost class (get insp from the python class).
   - [x] add cost.
   - [x] implement generic reduction algorithm for sum and min.
+  - [ ] compute the expodential of the cost - beta only once.
+  - [ ] compute inverse of nabla and lambda only once.
   - [ ] finish algo as mentioned in the point_mass.cu example.
   - [ ] generalize the code.
   - [ ] try mujoco simulation.
