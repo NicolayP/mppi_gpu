@@ -108,7 +108,9 @@
      float* d_x_i;
      float* d_cost;
      float* d_beta;
+     float* _d_beta;
      float* d_nabla;
+     float* _d_nabla;
      float* d_lambda;
      float* d_weights;
 

@@ -159,6 +159,7 @@ PointMassModel::PointMassModel(size_t nb_sim, size_t steps, float dt)
     float lambda[0];
     lambda[0] = 1.;
 
+    size_t GRID_SIZE = n_sim_ / SIZE / 2 + 1;
     // *Allocate the data on tahe GPU.*
     std::cout << "Allocating Space... : " << std::flush;
     // allocate space for all our simulation objects.
@@ -182,8 +183,13 @@ PointMassModel::PointMassModel(size_t nb_sim, size_t steps, float dt)
     CUDA_CALL_CONST(cudaMalloc((void**)&d_beta, sizeof(float)));
     // used for the reduction algorithm
     CUDA_CALL_CONST(cudaMalloc((void**)&_d_beta, sizeof(float)*GRID_SIZE));
+    CUDA_CALL_CONST(cudaMemset((void*)_d_beta, 0, sizeof(float)*GRID_SIZE));
 
     CUDA_CALL_CONST(cudaMalloc((void**)&d_nabla, sizeof(float)));
+    // used for the reduction algorithm
+    CUDA_CALL_CONST(cudaMalloc((void**)&_d_nabla, sizeof(float)*GRID_SIZE));
+    CUDA_CALL_CONST(cudaMemset((void*)_d_nabla, 0, sizeof(float)*GRID_SIZE));
+
     CUDA_CALL_CONST(cudaMalloc((void**)&d_lambda, sizeof(float)));
 
 
@@ -213,7 +219,9 @@ PointMassModel::~PointMassModel()
     CUDA_CALL_CONST(cudaFree((void*)d_u));
     CUDA_CALL_CONST(cudaFree((void*)d_e));
     CUDA_CALL_CONST(cudaFree((void*)d_beta));
+    CUDA_CALL_CONST(cudaFree((void*)_d_beta));
     CUDA_CALL_CONST(cudaFree((void*)d_nabla));
+    CUDA_CALL_CONST(cudaFree((void*)_d_nabla));
     CUDA_CALL_CONST(cudaFree((void*)state_gain));
     CUDA_CALL_CONST(cudaFree((void*)act_gain));
     CUDA_CALL_CONST(cudaFree((void*)d_models));
@@ -241,9 +249,9 @@ void PointMassModel::sim()
     std::cout << "Done" << std::endl;
 
     //compute weights
-    std::cout << "Compute nabla... : " << std::flush;
-    nabla();
-    std::cout << "Done" << std::endl;
+    //std::cout << "Compute weights... : " << std::flush;
+    //wieghts();
+    //std::cout << "Done" << std::endl;
     //weight<<<>>>();
     // compute new set of actions.
     //action<<<>>>();
@@ -285,7 +293,6 @@ void PointMassModel::memcpy_get_data(float* x_all, float* e)
 
 void PointMassModel::min_beta()
 {
-    float* _d_beta;
     size_t _n_sim(n_sim_);
     // TB Size
     int BLOCK_SIZE = SIZE;
@@ -320,22 +327,16 @@ void PointMassModel::min_beta()
     }
 
     CUDA_CALL_CONST(cudaMemcpy(d_beta, _d_beta, sizeof(float), cudaMemcpyDeviceToDevice));
-    //d_beta[0] = _d_beta[0];
-
-    CUDA_CALL_CONST(cudaFree(_d_beta));
 }
 
 void PointMassModel::nabla()
 {
-    float* _d_nabla;
     size_t _n_sim(n_sim_);
     // TB Size
     int BLOCK_SIZE = SIZE;
 
     // Grid Size (cut in half) (No padding)
     int GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1;
-
-    CUDA_CALL_CONST(cudaMalloc((void**)&_d_nabla, sizeof(float)*GRID_SIZE));
 
 
     if (GRID_SIZE == 1)
@@ -359,7 +360,7 @@ void PointMassModel::nabla()
         sum_red << <1, BLOCK_SIZE >> > (_d_nabla, _d_nabla, _n_sim);
     }
     CUDA_CALL_CONST(cudaMemcpy(d_nabla, _d_nabla, sizeof(float), cudaMemcpyDeviceToDevice));
-    CUDA_CALL_CONST(cudaFree(_d_nabla));
+
 }
 
 __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
