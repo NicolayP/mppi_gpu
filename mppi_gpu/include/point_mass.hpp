@@ -6,12 +6,17 @@
 #include "cost.hpp"
 
 
-#define STEPS 2000
+#define STEPS 200
 #define TOL 1e-6
+
+// Called inside constructor
+#define CUDA_CALL_CONST(x) do { if((x) != cudaSuccess) {\
+    printf("Error at %s %d\n",__FILE__, __LINE__);\
+    }} while(0)
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {\
     printf("Error at %s %d\n",__FILE__, __LINE__);\
-    return EXIT_FAILURE;}} while(0)
+    return EXIT_FAILURE}} while(0)
 
 
 
@@ -105,6 +110,7 @@
      float* d_beta;
      float* d_nabla;
      float* d_lambda;
+     float* d_weights;
 
      PointMassModelGpu* d_models;
 
@@ -123,19 +129,21 @@
      curandState* rng_states;
  };
 
+ /*
+ * Set of global function that the class Model will use to
+ * run kernels.
+ */
+ __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
+     size_t n_,
+     float* d_u,
+     float* d_cost,
+     curandState* rng_states);
+
  __global__ void min_red(float* v, float* beta, int n);
 
  __global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, int n);
 
 __global__ void sum_red(float* v, float* v_r, int n);
-/*
- * Set of global function that the class Model will use to
- * run kernels.
- */
-__global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
-                                size_t n_,
-                                float* d_u,
-                                curandState* rng_states);
 
 __global__ void set_data_(PointMassModelGpu* d_models,
                           float* d_x_i,

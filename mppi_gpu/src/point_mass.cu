@@ -13,7 +13,6 @@ __host__ __device__ PointMassModelGpu::PointMassModelGpu(){
     _e = nullptr;
     _tau = STEPS;
     _t = 1;
-    float lambda = 1.0;
     /*
     // Local copy of the weight and the goal.
     float* w = (float*) malloc(sizeof(float)*x_size);
@@ -157,45 +156,51 @@ PointMassModel::PointMassModel(size_t nb_sim, size_t steps, float dt)
     state_[2] = 0;
     state_[3] = 1;
 
-    // *Allocate the data on tahe GPU.*
-    std::cout << "Allocating Space... : " << std::flush;
-    // allocate space for all our simulation objects.
-    cudaMalloc((void**)&d_models, sizeof(PointMassModelGpu)*n_sim_);
-    // allocate space for the init_state array. int* x[n_sim]
-    cudaMalloc((void**)&d_x_i, sizeof(float)*n_sim_*state_dim);
-    // allocate data space, continous in memeory so int* x[n_sim*steps_]
-    cudaMalloc((void**)&d_x, sizeof(float)*n_sim_*steps_*state_dim);
-    // set the memory with 0s.
-    cudaMemset((void*)d_x, 0, sizeof(float)*n_sim_*steps_*state_dim);
-    // allocate space for action.
-    cudaMalloc((void**)&d_e, sizeof(float)*n_sim_*steps_*act_dim);
-
-    cudaMemset((void*)d_e, 0, sizeof(float)*n_sim_*steps_*act_dim);
-
-    cudaMalloc((void**)&d_u, sizeof(float)*steps_*act_dim);
-
-    // container for the min value and the normalisation term.
-    cudaMalloc((void**)&d_beta, sizeof(float));
-    cudaMalloc((void**)&d_nabla, sizeof(float));
-    cudaMalloc((void**)&d_lambda, sizeof(float));
-
     float lambda[0];
     lambda[0] = 1.;
 
-    cudaMemcpy(d_lambda, lambda, sizeof(float), cudaMemcpyHostToDevice);
+    // *Allocate the data on tahe GPU.*
+    std::cout << "Allocating Space... : " << std::flush;
+    // allocate space for all our simulation objects.
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_models, sizeof(PointMassModelGpu)*n_sim_));
+    // allocate space for the init_state array. int* x[n_sim]
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_x_i, sizeof(float)*n_sim_*state_dim));
+    // allocate data space, continous in memeory so int* x[n_sim*steps_]
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_x, sizeof(float)*n_sim_*steps_*state_dim));
+    // set the memory with 0s.
+    CUDA_CALL_CONST(cudaMemset((void*)d_x, 0, sizeof(float)*n_sim_*steps_*state_dim));
+    // allocate space for action.
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_e, sizeof(float)*n_sim_*steps_*act_dim));
+
+    CUDA_CALL_CONST(cudaMemset((void*)d_e, 0, sizeof(float)*n_sim_*steps_*act_dim));
+
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_u, sizeof(float)*steps_*act_dim));
+
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_cost, sizeof(float)*n_sim_));
+
+    // container for the min value and the normalisation term.
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_beta, sizeof(float)));
+    // used for the reduction algorithm
+    CUDA_CALL_CONST(cudaMalloc((void**)&_d_beta, sizeof(float)*GRID_SIZE));
+
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_nabla, sizeof(float)));
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_lambda, sizeof(float)));
+
+
+    CUDA_CALL_CONST(cudaMemcpy(d_lambda, lambda, sizeof(float), cudaMemcpyHostToDevice));
 
 
     // Set gain memory
-    cudaMalloc((void**)&state_gain, sizeof(float)*state_dim);
-    cudaMalloc((void**)&act_gain, sizeof(float)*act_dim);
+    CUDA_CALL_CONST(cudaMalloc((void**)&state_gain, sizeof(float)*state_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&act_gain, sizeof(float)*act_dim));
 
-    cudaMemcpy(state_gain, state_, sizeof(float)*state_dim, cudaMemcpyHostToDevice);
-    cudaMemcpy(act_gain, act_, sizeof(float)*act_dim, cudaMemcpyHostToDevice);
+    CUDA_CALL_CONST(cudaMemcpy(state_gain, state_, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(act_gain, act_, sizeof(float)*act_dim, cudaMemcpyHostToDevice));
 
-    cudaMalloc((void**)&rng_states, sizeof(curandState_t)*n_sim_);
+    CUDA_CALL_CONST(cudaMalloc((void**)&rng_states, sizeof(curandState_t)*n_sim_));
 
-    cudaMalloc((void**)&d_g, sizeof(float)*state_dim);
-    cudaMalloc((void**)&d_w, sizeof(float)*state_dim);
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_g, sizeof(float)*state_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_w, sizeof(float)*state_dim));
 
     cudaDeviceSynchronize();
     std::cout << "Done" << std::endl;
@@ -203,16 +208,16 @@ PointMassModel::PointMassModel(size_t nb_sim, size_t steps, float dt)
 
 PointMassModel::~PointMassModel()
 {
-    cudaFree((void*)d_x);
-    cudaFree((void*)d_x_i);
-    cudaFree((void*)d_u);
-    cudaFree((void*)d_e);
-    cudaFree((void*)d_beta);
-    cudaFree((void*)d_nabla);
-    cudaFree((void*)state_gain);
-    cudaFree((void*)act_gain);
-    cudaFree((void*)d_models);
-    cudaFree((void*)rng_states);
+    CUDA_CALL_CONST(cudaFree((void*)d_x));
+    CUDA_CALL_CONST(cudaFree((void*)d_x_i));
+    CUDA_CALL_CONST(cudaFree((void*)d_u));
+    CUDA_CALL_CONST(cudaFree((void*)d_e));
+    CUDA_CALL_CONST(cudaFree((void*)d_beta));
+    CUDA_CALL_CONST(cudaFree((void*)d_nabla));
+    CUDA_CALL_CONST(cudaFree((void*)state_gain));
+    CUDA_CALL_CONST(cudaFree((void*)act_gain));
+    CUDA_CALL_CONST(cudaFree((void*)d_models));
+    CUDA_CALL_CONST(cudaFree((void*)rng_states));
 }
 
 void PointMassModel::sim()
@@ -223,18 +228,22 @@ void PointMassModel::sim()
     // using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
     // and threadIdx.y & threadIdx.z.
     std::cout << "Starting simulations... : " << std::flush;
-    sim_gpu_kernel_<<<1 + n_sim_/SIZE, SIZE>>>(d_models, n_sim_, d_e, rng_states);
-    std::cout << "simulations finished!" << std::endl;
-    std::cout << "Compute min cost... :" << std::flush;
+    sim_gpu_kernel_<<<1 + n_sim_/SIZE, SIZE>>>(d_models, n_sim_, d_e, d_cost, rng_states);
+    std::cout << "Done" << std::endl;
+
     // find min cost
+    std::cout << "Compute min cost... : " << std::flush;
     min_beta();
     std::cout << "Done" << std::endl;
-    std::cout << "Compute nabla... :" << std::flush;
+
+    std::cout << "Compute nabla... : " << std::flush;
     nabla();
     std::cout << "Done" << std::endl;
-    // get normalisation
-    //sum_red<<<>>>();
+
     //compute weights
+    std::cout << "Compute nabla... : " << std::flush;
+    nabla();
+    std::cout << "Done" << std::endl;
     //weight<<<>>>();
     // compute new set of actions.
     //action<<<>>>();
@@ -243,10 +252,10 @@ void PointMassModel::sim()
 
 void PointMassModel::memcpy_set_data(float* x, float* u, float* goal, float* w)
 {
-    cudaMemcpy(d_x_i, x, sizeof(float)*n_sim_*state_dim, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_u, u, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_g, goal, sizeof(float)*state_dim, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_w, w, sizeof(float)*state_dim, cudaMemcpyHostToDevice);
+    CUDA_CALL_CONST(cudaMemcpy(d_x_i, x, sizeof(float)*n_sim_*state_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(d_u, u, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(d_g, goal, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(d_w, w, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
     std::cout << "Setting inital state of the sims... : " << std::flush;
     set_data_<<<1 + n_sim_/256, 256>>>(d_models,
                                         d_x_i,
@@ -269,14 +278,13 @@ void PointMassModel::memcpy_set_data(float* x, float* u, float* goal, float* w)
 
 void PointMassModel::memcpy_get_data(float* x_all, float* e)
 {
-    cudaMemcpy(x_all, d_x, bytes_, cudaMemcpyDeviceToHost);
-    cudaMemcpy(e, d_e, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyDeviceToHost);
+    CUDA_CALL_CONST(cudaMemcpy(x_all, d_x, bytes_, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(e, d_e, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyDeviceToHost));
     cudaDeviceSynchronize();
 }
 
 void PointMassModel::min_beta()
 {
-    std::cout << "Finding beta" << std::endl;
     float* _d_beta;
     size_t _n_sim(n_sim_);
     // TB Size
@@ -288,22 +296,16 @@ void PointMassModel::min_beta()
     // THIS shouldn't change size during the controller iterations.
     // should verify this and then allocate data in the init to improve
     // computation time
-    cudaMalloc((void**)&_d_beta, sizeof(float)*GRID_SIZE);
 
-    std::cout << "Allocated device beta memory" << std::endl;
 
     if (GRID_SIZE == 1)
     {
-        std::cout << "Run only once...: " << std::flush;
         min_red << <1, BLOCK_SIZE >> > (d_cost, _d_beta, _n_sim);
-        std::cout << "Done" << std::endl;
     }
     else
     {
         // insure at least one pass.
-        std::cout << "Run first...: " << std::flush;
         min_red << <GRID_SIZE, BLOCK_SIZE >> > (d_cost, _d_beta, _n_sim);
-        std::cout << "Done" << std::endl;
 
         _n_sim = GRID_SIZE;
         GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
@@ -314,15 +316,13 @@ void PointMassModel::min_beta()
             _n_sim = GRID_SIZE;
             GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
         }
-        std::cout << "Run last...: " << std::flush;
         min_red << <1, BLOCK_SIZE >> > (_d_beta, _d_beta, _n_sim);
-        std::cout << "Done" << std::endl;
     }
 
-    cudaMemcpy(d_beta, _d_beta, sizeof(float), cudaMemcpyDeviceToDevice);
+    CUDA_CALL_CONST(cudaMemcpy(d_beta, _d_beta, sizeof(float), cudaMemcpyDeviceToDevice));
     //d_beta[0] = _d_beta[0];
 
-    cudaFree(_d_beta);
+    CUDA_CALL_CONST(cudaFree(_d_beta));
 }
 
 void PointMassModel::nabla()
@@ -335,7 +335,7 @@ void PointMassModel::nabla()
     // Grid Size (cut in half) (No padding)
     int GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1;
 
-    cudaMalloc((void**)&_d_nabla, sizeof(float)*GRID_SIZE);
+    CUDA_CALL_CONST(cudaMalloc((void**)&_d_nabla, sizeof(float)*GRID_SIZE));
 
 
     if (GRID_SIZE == 1)
@@ -358,22 +358,23 @@ void PointMassModel::nabla()
         }
         sum_red << <1, BLOCK_SIZE >> > (_d_nabla, _d_nabla, _n_sim);
     }
-    cudaMemcpy(d_nabla, _d_nabla, sizeof(float), cudaMemcpyDeviceToDevice);
-    cudaFree(_d_nabla);
+    CUDA_CALL_CONST(cudaMemcpy(d_nabla, _d_nabla, sizeof(float), cudaMemcpyDeviceToDevice));
+    CUDA_CALL_CONST(cudaFree(_d_nabla));
 }
 
 __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
                                 size_t n_sim_,
                                 float* d_u,
+                                float* cost,
                                 curandState* rng_states)
 {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    float* cost = (float*) malloc(sizeof(float)*n_sim_);
     if(tid < n_sim_){
         /* local copy of rng state for faster generation. */
         curandState localState = rng_states[tid];
         cost[tid] = d_models[tid].run(&localState);
+        //printf("tid: %d, cost[tid]: %f\n", tid, cost[tid]);
         /* copy back the state ohterwise the rng state is not working. */
         rng_states[tid] = localState;
         /*
@@ -401,22 +402,19 @@ __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
 __global__ void min_red(float* v, float* beta, int n)
 {
     // Allocate shared memory
-	__shared__ int partial_min[SHMEM_SIZE];
-
-	// Calculate thread ID
-	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	__shared__ float partial_min[SHMEM_SIZE];
 
 	// Load elements AND do first add of reduction
 	// Vector now 2x as long as number of threads, so scale i
-	int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
+	size_t i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
 	// Store first partial result instead of just the elements
     if (i + blockDim.x < n)
     {
-	   partial_min[threadIdx.x] = v[i] < v[i + blockDim.x] ? v[i] : v[i + blockDim.x];
+        partial_min[threadIdx.x] = v[i] < v[i + blockDim.x] ? v[i] : v[i + blockDim.x];
     }
     else if (i < n)
     {
-       partial_min[threadIdx.x] = v[i];
+        partial_min[threadIdx.x] = v[i];
     }
     else
     {
@@ -427,10 +425,10 @@ __global__ void min_red(float* v, float* beta, int n)
 	__syncthreads();
 
 	// Start at 1/2 block stride and divide by two each iteration
-	for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+	for (size_t s = blockDim.x / 2; s > 0; s >>= 1) {
 		// Each thread does work unless it is further than the stride
 		if (threadIdx.x < s) {
-			partial_min[threadIdx.x] += partial_min[threadIdx.x + s];
+			partial_min[threadIdx.x] = partial_min[threadIdx.x] < partial_min[threadIdx.x + s] ? partial_min[threadIdx.x] : partial_min[threadIdx.x + s];
 		}
 		__syncthreads();
 	}
@@ -439,30 +437,28 @@ __global__ void min_red(float* v, float* beta, int n)
 	// Result is inexed by this block
 	if (threadIdx.x == 0) {
 		beta[blockIdx.x] = partial_min[0];
+        //printf("partial_min[0]: %f\n", partial_min[0]);
 	}
 }
 
-__global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, int n)
+__global__ void sum_red_exp(float* v, float* lambda_1, float* beta, float* v_r, int n)
 {
     // Allocate shared memory
-    __shared__ int partial_sum[SHMEM_SIZE];
-
-    // Calculate thread ID
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    __shared__ float partial_sum[SHMEM_SIZE];
 
     // Load elements AND do first add of reduction
     // Vector now 2x as long as number of threads, so scale i
-    int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
+    size_t i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
     // Store first partial result instead of just the elements
     if (i + blockDim.x < n)
     {
-       v[i] = exp(1./lambda[0] * (v[i] - beta[0]));
-       v[i + blockDim.x] = exp(1./lambda[0] * (v[i + blockDim.x] - beta[0]));
+       v[i] = expf(lambda_1[0] * (v[i] - beta[0]));
+       v[i + blockDim.x] = expf(lambda_1[0] * (v[i + blockDim.x] - beta[0]));
        partial_sum[threadIdx.x] = v[i] + v[i + blockDim.x];
     }
     else if (i < n)
     {
-       v[i] = exp(1./lambda[0] * (v[i] - beta[0]));
+       v[i] = expf(lambda_1[0] * (v[i] - beta[0]));
        partial_sum[threadIdx.x] = v[i];
     }
     else
@@ -474,7 +470,7 @@ __global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, in
     __syncthreads();
 
     // Start at 1/2 block stride and divide by two each iteration
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+    for (size_t s = blockDim.x / 2; s > 0; s >>= 1) {
         // Each thread does work unless it is further than the stride
         if (threadIdx.x < s) {
             partial_sum[threadIdx.x] += partial_sum[threadIdx.x + s];
@@ -492,14 +488,11 @@ __global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, in
 __global__ void sum_red(float* v, float* v_r, int n)
 {
     // Allocate shared memory
-    __shared__ int partial_sum[SHMEM_SIZE];
-
-    // Calculate thread ID
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    __shared__ float partial_sum[SHMEM_SIZE];
 
     // Load elements AND do first add of reduction
     // Vector now 2x as long as number of threads, so scale i
-    int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
+    size_t i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
     // Store first partial result instead of just the elements
     if (i + blockDim.x < n)
     {
@@ -518,7 +511,7 @@ __global__ void sum_red(float* v, float* v_r, int n)
     __syncthreads();
 
     // Start at 1/2 block stride and divide by two each iteration
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+    for (size_t s = blockDim.x / 2; s > 0; s >>= 1) {
         // Each thread does work unless it is further than the stride
         if (threadIdx.x < s) {
             partial_sum[threadIdx.x] += partial_sum[threadIdx.x + s];
