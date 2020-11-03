@@ -192,6 +192,7 @@ PointMassModel::PointMassModel(size_t nb_sim, size_t steps, float dt)
 
     CUDA_CALL_CONST(cudaMalloc((void**)&d_lambda, sizeof(float)));
 
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_weights, sizeof(float)*n_sim_));
 
     CUDA_CALL_CONST(cudaMemcpy(d_lambda, lambda, sizeof(float), cudaMemcpyHostToDevice));
 
@@ -249,9 +250,9 @@ void PointMassModel::sim()
     std::cout << "Done" << std::endl;
 
     //compute weights
-    //std::cout << "Compute weights... : " << std::flush;
-    //wieghts();
-    //std::cout << "Done" << std::endl;
+    std::cout << "Compute weights... : " << std::flush;
+    weights();
+    std::cout << "Done" << std::endl;
     //weight<<<>>>();
     // compute new set of actions.
     //action<<<>>>();
@@ -361,6 +362,10 @@ void PointMassModel::nabla()
     }
     CUDA_CALL_CONST(cudaMemcpy(d_nabla, _d_nabla, sizeof(float), cudaMemcpyDeviceToDevice));
 
+}
+
+void PointMassModel::weights(){
+    weights_kernel<<<1 + n_sim_/SIZE, SIZE>>>(d_cost, d_weights, d_lambda, d_beta, d_nabla, n_sim_);
 }
 
 __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
@@ -524,6 +529,14 @@ __global__ void sum_red(float* v, float* v_r, int n)
     // Result is inexed by this block
     if (threadIdx.x == 0) {
         v_r[blockIdx.x] = partial_sum[0];
+    }
+}
+
+__global__ void weights_kernel(float* v, float* v_r, float* lambda_1, float* beta, float* nabla_1, size_t n)
+{
+    size_t tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < n){
+        v_r[tid] = nabla_1[0] * expf(-lambda_1[0]*(v[tid] - beta[0]));
     }
 }
 

@@ -92,6 +92,7 @@
      void memcpy_get_data(float* x_all, float* e);
      void min_beta();
      void nabla();
+     void weights();
      //void set_steps(int steps);
      //int get_steps();
      //void set_nb_sim(int n);
@@ -107,10 +108,13 @@
      // value to set up inital state vector.
      float* d_x_i;
      float* d_cost;
+
      float* d_beta;
      float* _d_beta;
+
      float* d_nabla;
      float* _d_nabla;
+
      float* d_lambda;
      float* d_weights;
 
@@ -146,6 +150,8 @@
  __global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, int n);
 
 __global__ void sum_red(float* v, float* v_r, int n);
+
+__global__ void weights_kernel(float* v, float* v_r, float* lambda_1, float* beta, float* nabla_1, size_t n);
 
 __global__ void set_data_(PointMassModelGpu* d_models,
                           float* d_x_i,
