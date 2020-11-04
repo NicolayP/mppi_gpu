@@ -143,7 +143,7 @@ int main(){
     int act_dim = 2;
     int state_dim = 4;
 
-    int n = 3000;
+    int n = 4;
 
     float dt = 0.1;
 

@@ -49,3 +49,5 @@
   - added a reduction algorithm used for the min and add functions on a array. This is used to find the minimal cost and compute the normalisation term.
 
   - seg fault due a bad useage of the cost pointer fixed.
+
+  - completed algorithm. Need to send the data to the robot and shift the action vector by one unit and initalize U[T-1]. Haven't looked at the actual values of the controller. Implement get_inf to retrieve all the info, check the values and ultimately write a test code.

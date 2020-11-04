@@ -6,7 +6,7 @@
 #include "cost.hpp"
 
 
-#define STEPS 200
+#define STEPS 4
 #define TOL 1e-6
 
 // Called inside constructor
@@ -90,9 +90,11 @@
      void sim();
      void memcpy_set_data(float* x, float* u, float* goal, float* w);
      void memcpy_get_data(float* x_all, float* e);
+     void get_inf();
      void min_beta();
      void nabla();
      void weights();
+     void update_act();
      //void set_steps(int steps);
      //int get_steps();
      //void set_nb_sim(int n);
@@ -105,18 +107,31 @@
      float* d_x;
      float* d_u;
      float* d_e;
+
+     float* h_x;
+     float* h_u;
+     float* h_e;
      // value to set up inital state vector.
      float* d_x_i;
      float* d_cost;
 
+     float* h_cost;
+
      float* d_beta;
      float* _d_beta;
+
+     float* h_beta;
 
      float* d_nabla;
      float* _d_nabla;
 
+     float* h_nabla;
+
      float* d_lambda;
      float* d_weights;
+
+     float* h_lambda;
+     float* h_weights;
 
      PointMassModelGpu* d_models;
 
@@ -124,6 +139,7 @@
      float* d_g;
      /* Weight vector */
      float* d_w;
+     float* h_w;
 
      float* state_gain;
      size_t state_dim;
@@ -152,6 +168,16 @@
 __global__ void sum_red(float* v, float* v_r, int n);
 
 __global__ void weights_kernel(float* v, float* v_r, float* lambda_1, float* beta, float* nabla_1, size_t n);
+
+__global__ void copy_act(float* u, float* tmp, size_t t, size_t act_dim);
+
+__global__ void update_act_kernel(float* u,
+                                  float* weights,
+                                  float* e,
+                                  size_t steps,
+                                  size_t t,
+                                  const size_t act_dim,
+                                  size_t n);
 
 __global__ void set_data_(PointMassModelGpu* d_models,
                           float* d_x_i,

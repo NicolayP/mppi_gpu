@@ -236,7 +236,7 @@ void PointMassModel::sim()
     // to // enven more the code inside the simulation.
     // using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
     // and threadIdx.y & threadIdx.z.
-    std::cout << "Starting simulations... : " << std::flush;
+    std::cout << "Running simulations... : " << std::flush;
     sim_gpu_kernel_<<<1 + n_sim_/SIZE, SIZE>>>(d_models, n_sim_, d_e, d_cost, rng_states);
     std::cout << "Done" << std::endl;
 
@@ -290,6 +290,11 @@ void PointMassModel::memcpy_get_data(float* x_all, float* e)
     CUDA_CALL_CONST(cudaMemcpy(x_all, d_x, bytes_, cudaMemcpyDeviceToHost));
     CUDA_CALL_CONST(cudaMemcpy(e, d_e, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyDeviceToHost));
     cudaDeviceSynchronize();
+}
+
+void PointMassModel::get_inf()
+{
+    // get all the info to look at the results and debug if necessary.
 }
 
 void PointMassModel::min_beta()
@@ -364,8 +369,50 @@ void PointMassModel::nabla()
 
 }
 
-void PointMassModel::weights(){
+void PointMassModel::weights()
+{
     weights_kernel<<<1 + n_sim_/SIZE, SIZE>>>(d_cost, d_weights, d_lambda, d_beta, d_nabla, n_sim_);
+}
+
+void PointMassModel::update_act()
+{
+    for (size_t t=0; t < steps_; t++)
+    {
+        size_t _n_sim(n_sim_);
+        // TB Size
+        size_t BLOCK_SIZE = SIZE;
+
+        // Grid Size (cut in half) (No padding)
+        size_t GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1;
+
+        float* v_r;
+        CUDA_CALL_CONST(cudaMalloc((void**)v_r, sizeof(float)*GRID_SIZE*act_dim));
+
+
+        if (GRID_SIZE == 1)
+        {
+            update_act_kernel << <1, BLOCK_SIZE >> > (v_r, d_weights, d_e, STEPS, t, act_dim, _n_sim);
+        }
+        else
+        {
+            // insure at least one pass.
+            update_act_kernel << <GRID_SIZE, BLOCK_SIZE >> > (v_r, d_weights, d_e, STEPS, t, act_dim, _n_sim);
+
+            _n_sim = GRID_SIZE;
+            GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
+
+            while (GRID_SIZE - 1 > 1 )
+            {
+                sum_red << <GRID_SIZE, BLOCK_SIZE >> > (v_r, v_r, _n_sim);
+                _n_sim = GRID_SIZE;
+                GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
+            }
+            sum_red << <1, BLOCK_SIZE >> > (v_r, v_r, _n_sim);
+        }
+        copy_act<<< 1, act_dim >>>(d_u, v_r, t, act_dim);
+
+        CUDA_CALL_CONST(cudaFree((void*)v_r));
+    }
 }
 
 __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
@@ -540,6 +587,80 @@ __global__ void weights_kernel(float* v, float* v_r, float* lambda_1, float* bet
     }
 }
 
+__global__ void copy_act(float* u, float* tmp, size_t t, size_t act_dim){
+    size_t tid = blockIdx.x*blockDim.x + threadIdx.x;
+    if (tid < act_dim)
+        u[tid + t*act_dim] += tmp[tid];
+}
+// First implementation. Usually T << K so parallelize over K first.
+__global__ void update_act_kernel(float* v_r,
+                                  float* w,
+                                  float* e,
+                                  size_t steps,
+                                  size_t t,
+                                  const size_t act_dim,
+                                  size_t n)
+{
+    // Allocate shared memory
+    const size_t a_dim(act_dim);
+
+    __shared__ float partial_acts[SHMEM_SIZE*2];
+
+    // Load elements AND do first add of reduction
+    // Vector now 2x as long as number of threads, so scale i
+    size_t i = blockIdx.x * (blockDim.x * 2) * act_dim + threadIdx.x * steps + t * act_dim;
+    size_t k = blockIdx.x * blockDim.x + threadIdx.x;
+    // Store first partial result instead of just the elements
+    if (i + blockDim.x*steps*act_dim < n)
+    {
+        for (size_t j = 0; j < act_dim; j++)
+        {
+            partial_acts[threadIdx.x*act_dim + j] = w[k]*e[i + j] +
+                                                    w[k]*e[i + blockDim.x*steps*act_dim + j];
+        }
+    }
+    else if (i < n*steps*act_dim )
+    {
+        for (size_t j = 0; j < act_dim; j++)
+        {
+            partial_acts[threadIdx.x*act_dim + j] = w[k]*e[i + j];
+        }
+    }
+    else
+    {
+        for (size_t j = 0; j < act_dim; j++)
+        {
+            partial_acts[threadIdx.x*act_dim + j] = 0;
+        }
+    }
+    //partial_sum[threadIdx.x] = v[i] + v[i + blockDim.x];
+
+    __syncthreads();
+
+    // Start at 1/2 block stride and divide by two each iteration
+    for (size_t s = blockDim.x * act_dim / 2; s > 0; s >>= 1)
+    {
+        // Each thread does work unless it is further than the stride
+        if (threadIdx.x < s)
+        {
+            for (size_t j = 0; j < act_dim; j++)
+            {
+                partial_acts[threadIdx.x*act_dim + j] += partial_acts[threadIdx.x*act_dim + j + s];
+            }
+        }
+        __syncthreads();
+    }
+
+    // Let the thread 0 for this block write it's result to main memory
+    // Result is inexed by this block
+    if (threadIdx.x == 0)
+    {
+        for(size_t j = 0; j < act_dim; j++)
+        {
+            v_r[blockIdx.x*act_dim + j] = partial_acts[j];
+        }
+    }
+}
 
 __global__ void set_data_(PointMassModelGpu* d_models,
                           float* d_x_i,
