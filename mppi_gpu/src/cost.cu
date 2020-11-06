@@ -1,4 +1,6 @@
 #include "cost.hpp"
+#include <stdio.h>
+#include <stdlib.h>
 
 
 __host__ __device__ Cost::Cost(){
@@ -6,12 +8,12 @@ __host__ __device__ Cost::Cost(){
 }
 
 __host__ __device__ Cost::Cost(float* w,
-                               size_t w_size,
+                               int w_size,
                                float* goal,
-                               size_t goal_size,
+                               int goal_size,
                                float lambda,
                                float* inv_s,
-                               size_t u_size)
+                               int u_size)
 {
     _w = w;
     _w_size = w_size;
@@ -23,12 +25,12 @@ __host__ __device__ Cost::Cost(float* w,
 }
 
 __host__ __device__ void Cost::init(float* w,
-                                    size_t w_size,
+                                    int w_size,
                                     float* goal,
-                                    size_t goal_size,
+                                    int goal_size,
                                     float lambda,
                                     float* inv_s,
-                                    size_t u_size)
+                                    int u_size)
 {
     _w = w;
     _w_size = w_size;

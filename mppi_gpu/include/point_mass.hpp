@@ -4,20 +4,47 @@
 #include <curand.h>
 #include <curand_kernel.h>
 #include "cost.hpp"
+#include "point_mass_gpu.hpp"
+
+#include <stdlib.h>
+#include <stdio.h>
+
+#include <iostream>
+#include <fstream>
 
 
-#define STEPS 4
+#define STEPS 3
 #define TOL 1e-6
 
 // Called inside constructor
+/*
 #define CUDA_CALL_CONST(x) do { if((x) != cudaSuccess) {\
     printf("Error at %s %d\n",__FILE__, __LINE__);\
     }} while(0)
-
+*/
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {\
     printf("Error at %s %d\n",__FILE__, __LINE__);\
     return EXIT_FAILURE}} while(0)
 
+
+#define CUDA_CALL_CONST(x) do {\
+    cudaError_t err = (x);\
+    if(err != cudaSuccess) {\
+        printf("API error failed %s:%d Returned: %d\n", \
+        __FILE__, __LINE__, err);\
+    exit(1);\
+}} while(0)
+
+/*
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
+{
+   if (code != cudaSuccess)
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) getchar();
+   }
+}*/
 
 
 /*
@@ -42,6 +69,7 @@
                                    float lambda);
      __host__ __device__ void step(curandState* state);
      __host__ __device__ float run(curandState* state);
+     __host__ __device__ void save_e();
      __host__ __device__ void set_state(float* x);
      __host__ __device__ void set_horizon(int horizon);
      __host__ __device__ float* get_state();
@@ -68,7 +96,10 @@
      float* _g;
      float* _w;
 
+     // local memory to e.
      float* _e;
+     // pointer to global memory of e.
+     float* glob_e;
 
      //sigma and its inverse.
      float* _s;
@@ -85,12 +116,12 @@
  // and execution state of the device as reported by cuda.
  class PointMassModel{
  public:
-     PointMassModel(size_t nb_sim, size_t steps, float dt);
+     PointMassModel(int nb_sim, int steps, float dt);
      ~PointMassModel();
      void sim();
      void memcpy_set_data(float* x, float* u, float* goal, float* w);
      void memcpy_get_data(float* x_all, float* e);
-     void get_inf();
+     void get_inf(float* x, float* u, float* e, float* cost, float* beta, float* nabla, float* weight);
      void min_beta();
      void nabla();
      void weights();
@@ -100,38 +131,30 @@
      //void set_nb_sim(int n);
      //int get_nb_sim();
  private:
-     size_t n_sim_;
-     size_t steps_;
-     size_t bytes_;
+     int n_sim_;
+     int steps_;
+     int bytes_;
 
      float* d_x;
      float* d_u;
      float* d_e;
 
-     float* h_x;
-     float* h_u;
-     float* h_e;
      // value to set up inital state vector.
      float* d_x_i;
      float* d_cost;
 
-     float* h_cost;
 
      float* d_beta;
      float* _d_beta;
 
-     float* h_beta;
 
      float* d_nabla;
      float* _d_nabla;
 
-     float* h_nabla;
 
      float* d_lambda;
      float* d_weights;
 
-     float* h_lambda;
-     float* h_weights;
 
      PointMassModelGpu* d_models;
 
@@ -142,9 +165,9 @@
      float* h_w;
 
      float* state_gain;
-     size_t state_dim;
+     int state_dim;
      float* act_gain;
-     size_t act_dim;
+     int act_dim;
 
      float _dt;
 
@@ -156,7 +179,7 @@
  * run kernels.
  */
  __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
-     size_t n_,
+     int n_,
      float* d_u,
      float* d_cost,
      curandState* rng_states);
@@ -167,29 +190,29 @@
 
 __global__ void sum_red(float* v, float* v_r, int n);
 
-__global__ void weights_kernel(float* v, float* v_r, float* lambda_1, float* beta, float* nabla_1, size_t n);
+__global__ void weights_kernel(float* v, float* v_r, float* lambda_1, float* beta, float* nabla_1, int n);
 
-__global__ void copy_act(float* u, float* tmp, size_t t, size_t act_dim);
+__global__ void copy_act(float* u, float* tmp, int t, int act_dim);
 
 __global__ void update_act_kernel(float* u,
                                   float* weights,
                                   float* e,
-                                  size_t steps,
-                                  size_t t,
-                                  const size_t act_dim,
-                                  size_t n);
+                                  int steps,
+                                  int t,
+                                  int act_dim,
+                                  int n);
 
 __global__ void set_data_(PointMassModelGpu* d_models,
                           float* d_x_i,
                           float* d_x,
                           float* d_u,
                           float* d_e,
-                          size_t n_sim,
-                          size_t steps,
+                          int n_sim,
+                          int steps,
                           float* state_gain,
-                          size_t state_dim,
+                          int state_dim,
                           float* act_gain,
-                          size_t act_dim,
+                          int act_dim,
                           curandState* rng_states,
                           float* goal,
                           float* w,

@@ -9,6 +9,6 @@ set_property(TARGET mppi_gpu PROPERTY CUDA_ARCHITECTURES 70-real)
 
 target_link_options(mppi_gpu PRIVATE $<DEVICE_LINK:-arch=sm_70>)
 
-target_compile_options(mppi_gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -rdynamic -lineinfo -arch sm_70>)
+target_compile_options(mppi_gpu PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -rdynamic -g -G -arch sm_70>)
 
 set_target_properties(mppi_gpu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

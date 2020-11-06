@@ -24,9 +24,9 @@
 
 /*
 bool test_sim_gpu(float* data,
-                  size_t samples,
-                  size_t state_dim,
-                  size_t act_dim,
+                  int samples,
+                  int state_dim,
+                  int act_dim,
                   float dt,
                   float act,
                   float init){
@@ -103,10 +103,10 @@ bool test_sim_gpu(float* data,
 void to_csv(std::string filename,
             float* x,
             float* u,
-            size_t sample,
-            size_t size,
-            size_t s_dim,
-            size_t a_dim)
+            int sample,
+            int size,
+            int s_dim,
+            int a_dim)
 {
     std::cout << "Saving data to file...: " << std::flush;
     std::ofstream outfile;
@@ -140,10 +140,10 @@ void to_csv2(std::string filename,
             float* beta,
             float* nabla,
             float* w,
-            size_t sample,
-            size_t size,
-            size_t s_dim,
-            size_t a_dim)
+            int sample,
+            int size,
+            int s_dim,
+            int a_dim)
 {
     std::cout << "Saving data to file...: " << std::flush;
     std::ofstream outfile;
@@ -153,8 +153,8 @@ void to_csv2(std::string filename,
 
     outfile << "sample" << "," << "x" << "," << "y" << "," << "x_dot" << ","
             << "y_dot" << "," << "u_x" << "," << "u_y" << std::endl;
-    for (size_t i=0; i < sample; i++){
-        for (size_t j=0; j < size; j++){
+    for (int i=0; i < sample; i++){
+        for (int j=0; j < size; j++){
             outfile << i << ","
                     << x[i*size*s_dim + j*s_dim + 0] << ","
                     << x[i*size*s_dim + j*s_dim + 1] << ","
@@ -165,9 +165,9 @@ void to_csv2(std::string filename,
         }
     }
 
-    for(size_t d=0; d < a_dim; d++){
+    for(int d=0; d < a_dim; d++){
         outfile << "u[" << d << "]: ";
-        for(size_t i=0; i < STEPS; i++){
+        for(int i=0; i < STEPS; i++){
             outfile << "," << u[i*a_dim + d];
         }
         outfile << std::endl;
@@ -175,7 +175,7 @@ void to_csv2(std::string filename,
 
 
     outfile << "w: ";
-    for (size_t samp=0; samp < sample; samp++){
+    for (int samp=0; samp < sample; samp++){
         outfile << "," << w[samp];
     }
     outfile << std::endl;
@@ -198,7 +198,7 @@ int main(){
 
     int n = 4;
 
-    float* x = (float*) malloc(sizeof(float)*n*state_dim);
+    float* x = (float*) malloc(sizeof(float)*n*STEPS*state_dim);
     float* u = (float*) malloc(sizeof(float)*STEPS*act_dim);
     float* e = (float*) malloc(sizeof(float)*n*STEPS*act_dim);
     float* cost = (float*) malloc(sizeof(float)*n);
@@ -264,7 +264,6 @@ int main(){
     // send the data on the device.
     model->memcpy_set_data(h_x, h_u, goal, w);
 
-    model->get_inf(x, u, e, cost, beta, nabla, weight);
 
     t1 = std::chrono::system_clock::now();
 
@@ -276,11 +275,12 @@ int main(){
     fp_ms = t2 - t1;
     delta = fp_ms.count();
 
+
     std::cout << "GPU execution time: " << delta << "ms" << std::endl;
 
+    model->get_inf(x, u, e, cost, beta, nabla, weight);
     // get the data from the device.
     model->memcpy_get_data(h_o, h_e);
-
     /*
     for (int i = 0; i < n; i ++){
         for (int j=0; j < STEPS; j++){
@@ -292,8 +292,8 @@ int main(){
     */
 
     if(save){
-        //to_csv(filename, h_o, h_u, n, STEPS, state_dim, act_dim);
-        to_csv2(filename, x, u, e, cost, beta, nabla, weight, n, STEPS, state_dim, act_dim);
+        //to_csv(filename, h_o, h_e, n, STEPS, state_dim, act_dim);
+        to_csv2(filename, x, u, h_e, cost, beta, nabla, weight, n, STEPS, state_dim, act_dim);
     }
     /*if(test){
         //if(test_sim_gpu(h_o, n, state_dim, act_dim, dt, 0.01, 0.0)){
