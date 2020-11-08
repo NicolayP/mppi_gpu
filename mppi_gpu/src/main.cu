@@ -197,7 +197,7 @@ int main(){
     int act_dim = 2;
     int state_dim = 4;
 
-    int n = 4;
+    int n = 3000;
 
     float* x = (float*) malloc(sizeof(float)*n*STEPS*state_dim);
     float* u = (float*) malloc(sizeof(float)*STEPS*act_dim);
@@ -282,7 +282,7 @@ int main(){
     model->get_inf(x, u, e, cost, beta, nabla, weight);
     // get the data from the device.
     model->memcpy_get_data(h_o, h_e);
-    
+
     if(save){
         //to_csv(filename, h_o, h_e, n, STEPS, state_dim, act_dim);
         to_csv2(filename, x, u, h_e, cost, beta, nabla, weight, n, STEPS, state_dim, act_dim);

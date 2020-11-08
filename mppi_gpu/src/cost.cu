@@ -48,13 +48,13 @@ __host__ __device__ float Cost::step_cost(float* x, float* u, float* e, int id, 
     {
         res += (x[i] - _goal[i])*_w[i]*(x[i] - _goal[i]);
     }
-    printf("tmp_0[%d, %d]: %f\n", t, id, res);
+    //printf("tmp_0[%d, %d]: %f\n", t, id, res);
 
     for(int i=0; i < _u_size; i++)
     {
         res += u[i]*_inv_s[i]*e[i];
     }
-    printf("tmp_1[%d, %d]: %f\n", t, id, res);
+    //printf("tmp_1[%d, %d]: %f\n", t, id, res);
 
     return _lambda*res;
 }
@@ -65,6 +65,6 @@ __host__ __device__ float Cost::final_cost(float* x, int id)
     for (int i=0; i < _w_size; i++){
         res += (x[i] - _goal[i])*_w[i]*(x[i] - _goal[i]);
     }
-    printf("tmp_2[%d]: %f\n", id, res);
+    //printf("tmp_2[%d]: %f\n", id, res);
     return res;
 }

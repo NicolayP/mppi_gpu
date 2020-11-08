@@ -3,8 +3,8 @@
 #include <iostream>
 #include <math.h>
 
-#define SIZE 8
-#define SHMEM_SIZE 8
+#define SIZE 256
+#define SHMEM_SIZE 256
 
 
 __host__ __device__ PointMassModelGpu::PointMassModelGpu(){
@@ -83,8 +83,8 @@ __host__ __device__ void PointMassModelGpu::step(curandState* state)
 {
 
 #ifdef __CUDA_ARCH__
-    _e[(_t-1)*_u_size] += curand_normal(state);
-    _e[(_t-1)*_u_size + 1] += curand_normal(state);
+    _e[(_t-1)*_u_size] = curand_normal(state);
+    _e[(_t-1)*_u_size + 1] = curand_normal(state);
     //printf("_e[%d]: %f\n", (_t-1)*_u_size, _e[(_t-1)*_u_size]);
     //printf("_e[%d]: %f\n", (_t-1)*_u_size + 1, _e[(_t-1)*_u_size + 1]);
 
@@ -102,7 +102,7 @@ __host__ __device__ void PointMassModelGpu::step(curandState* state)
         _u_gain[1]*(_u[(_t-1)*_u_size + i] + _e[(_t-1)*_u_size + i]);
     }
     _c += _cost.step_cost(&_x[_t*_x_size], &_u[(_t-1)*_u_size], &_e[(_t-1)*_u_size], _id, _t);
-    printf("_c[%d]: %f\n", _id, _c);
+    //printf("_c[%d]: %f\n", _id, _c);
 }
 
 __host__ __device__ float PointMassModelGpu::run(curandState* state)
@@ -111,7 +111,7 @@ __host__ __device__ float PointMassModelGpu::run(curandState* state)
         step(state);
     }
     _c += _cost.final_cost(&_x[(_tau-1)*_x_size], _id);
-    printf("_c[%d, %d]: %f\n", (_tau-1), _id, _c);
+    //printf("_c[%d, %d]: %f\n", (_tau-1), _id, _c);
     // save action to global pointer
     save_e();
     return _c;
@@ -261,9 +261,10 @@ void PointMassModel::sim()
     // to // enven more the code inside the simulation.
     // using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
     // and threadIdx.y & threadIdx.z.
-    std::cout << "Running simulations... : " << std::endl;
+    std::cout << "Running simulations... : " << std::flush;
     sim_gpu_kernel_<<<1 + n_sim_/SIZE, SIZE>>>(d_models, n_sim_, d_e, d_cost, rng_states);
     cudaDeviceSynchronize();
+    /*
     std::cout << "Print x" << std::endl;
     print_x<<<1, 1>>>(d_x, STEPS, n_sim_, state_dim);
     cudaDeviceSynchronize();
@@ -276,30 +277,31 @@ void PointMassModel::sim()
     std::cout << "Print cost" << std::endl;
     print_costs<<<1, 1>>>(d_cost, n_sim_);
     cudaDeviceSynchronize();
+    */
     std::cout << "Done" << std::endl;
 
 
     // find min cost
-    std::cout << "Compute min cost... : " << std::endl;
+    std::cout << "Compute min cost... : " << std::flush;
     min_beta();
-    print_beta<<<1, 1>>>(d_beta, 1);
+    //print_beta<<<1, 1>>>(d_beta, 1);
     cudaDeviceSynchronize();
     std::cout << "Done" << std::endl;
 
-    std::cout << "Compute nabla... : " << std::endl;
+    std::cout << "Compute nabla... : " << std::flush;
     exp();
-    print_exp<<<1, 1>>>(d_exp, n_sim_);
+    //print_exp<<<1, 1>>>(d_exp, n_sim_);
     cudaDeviceSynchronize();
 
     nabla();
-    print_nabla<<<1, 1>>>(d_nabla, 1);
+    //print_nabla<<<1, 1>>>(d_nabla, 1);
     cudaDeviceSynchronize();
     std::cout << "Done" << std::endl;
 
     //compute weights
     std::cout << "Compute weights... : " << std::flush;
     weights();
-    print_weights<<<1, 1>>>(d_weights, n_sim_);
+    //print_weights<<<1, 1>>>(d_weights, n_sim_);
     cudaDeviceSynchronize();
     std::cout << "Done" << std::endl;
 
@@ -483,7 +485,8 @@ void PointMassModel::weights()
     cudaDeviceSynchronize();
 }
 
-void PointMassModel::update_act_id(){
+void PointMassModel::update_act_id()
+{
     int n_sim(n_sim_);
     //int BLOCK_SIZE = SIZE;
     //int GRID_SIZE = n_sim / BLOCK_SIZE / 2 / act_dim + 1;
@@ -491,7 +494,7 @@ void PointMassModel::update_act_id(){
     {
         int BLOCK_SIZE = SIZE;
         int GRID_SIZE = n_sim / BLOCK_SIZE / 2/ act_dim + 1;
-        std::cout << "GRID_SIZE: " << GRID_SIZE << std::endl;
+        //std::cout << "GRID_SIZE: " << GRID_SIZE << std::endl;
 
         if (GRID_SIZE==1)
         {
@@ -567,14 +570,15 @@ void PointMassModel::update_act()
             sum_red <<<1, BLOCK_SIZE >>> (v_r, v_r, _n_sim);
             cudaDeviceSynchronize();
         }
-        std::cout << "Copy at t: " << t << std::endl;
+        //std::cout << "Copy at t: " << t << std::endl;
 
         copy_act<<< 1, BLOCK_SIZE >>>(d_u, v_r, t, act_dim);
         cudaDeviceSynchronize();
-        std::cout << "Done" << std::endl;
+        //std::cout << "Done" << std::endl;
 
     }
 
+    /*
     float h_u[STEPS*2];
     CUDA_CALL_CONST(cudaMemcpy(h_u, d_u, sizeof(float)*steps_*act_dim, cudaMemcpyDeviceToHost));
     for (int j=0; j<act_dim; j++)
@@ -582,10 +586,10 @@ void PointMassModel::update_act()
         std::cout << "h_u[" << j << "]: ";
         for (int i = 0; i < steps_; i++)
         {
-            std::cout << h_u[j*act_dim + i] << " ";
+            std::cout << h_u[i*act_dim + j] << " ";
         }
         std::cout << std::endl;
-    }
+    }*/
 
     cudaDeviceSynchronize();
     CUDA_CALL_CONST(cudaFree((void*)v_r));
