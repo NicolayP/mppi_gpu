@@ -4,7 +4,6 @@
 #include <curand.h>
 #include <curand_kernel.h>
 #include "cost.hpp"
-#include "point_mass_gpu.hpp"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -66,7 +65,8 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
                                    int u_size,
                                    float* w,
                                    float* goal,
-                                   float lambda);
+                                   float lambda,
+                                   int id);
      __host__ __device__ void step(curandState* state);
      __host__ __device__ float run(curandState* state);
      __host__ __device__ void save_e();
@@ -109,6 +109,7 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
      Cost _cost;
      // contains cumulative cost.
      float _c;
+     int _id;
 
  };
 
@@ -122,10 +123,12 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
      void memcpy_set_data(float* x, float* u, float* goal, float* w);
      void memcpy_get_data(float* x_all, float* e);
      void get_inf(float* x, float* u, float* e, float* cost, float* beta, float* nabla, float* weight);
+     void exp();
      void min_beta();
      void nabla();
      void weights();
      void update_act();
+     void update_act_id();
      //void set_steps(int steps);
      //int get_steps();
      //void set_nb_sim(int n);
@@ -143,6 +146,7 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
      float* d_x_i;
      float* d_cost;
 
+     float* d_exp;
 
      float* d_beta;
      float* _d_beta;
@@ -178,15 +182,17 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
  * Set of global function that the class Model will use to
  * run kernels.
  */
- __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
+__global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
      int n_,
      float* d_u,
      float* d_cost,
      curandState* rng_states);
 
- __global__ void min_red(float* v, float* beta, int n);
+__global__ void exp_red(float* out, float* cost, float* lambda, float* beta, float* nabla, int size);
 
- __global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, int n);
+__global__ void min_red(float* v, float* beta, int n);
+
+__global__ void sum_red_exp(float* v, float* lambda, float* beta, float* v_r, int n);
 
 __global__ void sum_red(float* v, float* v_r, int n);
 
@@ -217,5 +223,19 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                           float* goal,
                           float* w,
                           float* lambda);
+
+__global__ void print_x(float* x, int steps, int samples, int s_dim);
+__global__ void print_u(float* u, int steps, int a_dim);
+__global__ void print_e(float* e, int steps, int samples, int a_dim);
+__global__ void print_beta(float* beta, int size);
+__global__ void print_nabla(float* nabla, int size);
+__global__ void print_lam(float* lamb, int size);
+__global__ void print_weights(float* weights, int samples);
+__global__ void print_costs(float* costs, int samples);
+__global__ void print_exp(float* exp, int samples);
+
+__global__ void update_act_id_kernel(int steps, int t, int a_dim, int samples);
+
+
 
 #endif

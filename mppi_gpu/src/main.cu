@@ -152,7 +152,13 @@ void to_csv2(std::string filename,
     outfile.open(filename);
 
     outfile << "sample" << "," << "x" << "," << "y" << "," << "x_dot" << ","
-            << "y_dot" << "," << "u_x" << "," << "u_y" << std::endl;
+            << "y_dot" << "," << "u_x" << "," << "u_y";
+    for(int d=0; d < a_dim; d++)
+    {
+        outfile << "," << "u[" << d << "]";
+    }
+    outfile << "," << "c" <<  "," << "w" << std::endl;
+
     for (int i=0; i < sample; i++){
         for (int j=0; j < size; j++){
             outfile << i << ","
@@ -161,24 +167,19 @@ void to_csv2(std::string filename,
                     << x[i*size*s_dim + j*s_dim + 2] << ","
                     << x[i*size*s_dim + j*s_dim + 3] << ","
                     << e[i*size*a_dim + j*a_dim + 0] << ","
-                    << e[i*size*a_dim + j*a_dim + 1] << std::endl;
+                    << e[i*size*a_dim + j*a_dim + 1];
+            // U is of size steps
+            if(i < 1) {
+                outfile << "," << u[j*a_dim + 0] << "," << u[j*a_dim + 1];
+            }else
+                outfile << ", , ";
+            if (i*size + j < sample) {
+                outfile << "," << cost[i*size+j] << "," << w[i*size+j];
+            }
+            outfile << std::endl;
         }
     }
 
-    for(int d=0; d < a_dim; d++){
-        outfile << "u[" << d << "]: ";
-        for(int i=0; i < STEPS; i++){
-            outfile << "," << u[i*a_dim + d];
-        }
-        outfile << std::endl;
-    }
-
-
-    outfile << "w: ";
-    for (int samp=0; samp < sample; samp++){
-        outfile << "," << w[samp];
-    }
-    outfile << std::endl;
 
     outfile.close();
     std::cout << "Done" << std::endl;
@@ -281,25 +282,11 @@ int main(){
     model->get_inf(x, u, e, cost, beta, nabla, weight);
     // get the data from the device.
     model->memcpy_get_data(h_o, h_e);
-    /*
-    for (int i = 0; i < n; i ++){
-        for (int j=0; j < STEPS; j++){
-            std::cout << "t: " << j
-                          << " u_x: " << h_u[i*STEPS*act_dim + j*act_dim + 0]
-                          << " u_y: " << h_u[i*STEPS*act_dim + j*act_dim + 1] << std::endl;
-        }
-    }
-    */
-
+    
     if(save){
         //to_csv(filename, h_o, h_e, n, STEPS, state_dim, act_dim);
         to_csv2(filename, x, u, h_e, cost, beta, nabla, weight, n, STEPS, state_dim, act_dim);
     }
-    /*if(test){
-        //if(test_sim_gpu(h_o, n, state_dim, act_dim, dt, 0.01, 0.0)){
-        //    std::cout << "Test passed!" << std::endl;
-        //}
-    }*/
 
     std::cout << "Freeing memory... : " << std::flush;
     free(h_x);
@@ -309,5 +296,4 @@ int main(){
 
     delete model;
     cudaDeviceReset();
-    //cuCtxDestroy();
 }
