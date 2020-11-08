@@ -196,6 +196,7 @@ PointMassModel::PointMassModel(int nb_sim, int steps, float dt)
     CUDA_CALL_CONST(cudaMemset((void*)d_e, 0, sizeof(float)*n_sim_*steps_*act_dim));
 
     CUDA_CALL_CONST(cudaMalloc((void**)&d_u, sizeof(float)*steps_*act_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&d_u_swap, sizeof(float)*steps_*act_dim));
 
     CUDA_CALL_CONST(cudaMalloc((void**)&d_cost, sizeof(float)*n_sim_));
     CUDA_CALL_CONST(cudaMalloc((void**)&d_exp, sizeof(float)*n_sim_));
@@ -241,6 +242,7 @@ PointMassModel::~PointMassModel()
     CUDA_CALL_CONST(cudaFree((void*)d_x));
     CUDA_CALL_CONST(cudaFree((void*)d_x_i));
     CUDA_CALL_CONST(cudaFree((void*)d_u));
+    CUDA_CALL_CONST(cudaFree((void*)d_u_swap));
     CUDA_CALL_CONST(cudaFree((void*)d_e));
     CUDA_CALL_CONST(cudaFree((void*)d_cost));
     CUDA_CALL_CONST(cudaFree((void*)d_exp));
@@ -307,16 +309,19 @@ void PointMassModel::sim()
 
     std::cout << "compute new actions... : " << std::endl;
     update_act();
-    print_u<<<1, 1>>>(d_u, STEPS, act_dim);
+    //print_u<<<1, 1>>>(d_u, STEPS, act_dim);
     cudaDeviceSynchronize();
     std::cout << "Done" << std::endl;
 
+    std::cout << "shift and init... : " << std::flush;
+    shift_act<<<1 + n_sim_/SIZE, SIZE>>>(d_u, d_u_swap, act_dim, STEPS);
+    CUDA_CALL_CONST(cudaMemcpy(d_u, d_u_swap, sizeof(float)*act_dim*STEPS, cudaMemcpyDeviceToDevice));
+    //print_u<<<1, 1>>>(d_u, STEPS, act_dim);
+    std::cout << "Not Implemented yet" << std::endl;
     /*
     std::cout << "send action... : " << std::flush;
     std::cout << "Not Implemented yet" << std::endl;
 
-    std::cout << "shift and init... : " << std::flush;
-    std::cout << "Not Implemented yet" << std::endl;
     */
     cudaDeviceSynchronize();
 }
@@ -1107,4 +1112,18 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                             lambda[0],
                             tid);
     }
+}
+
+__global__ void shift_act(float* u, float* u_swap, int a_dim, int samples)
+{
+    int tid = blockDim.x*blockIdx.x + threadIdx.x;
+    if(tid < samples - 1)
+    {
+        for(int j=0; j < a_dim; j++)
+        {
+            u_swap[(tid)*a_dim+j] = u[(tid+1)*a_dim+j];
+        }
+    }
+
+
 }

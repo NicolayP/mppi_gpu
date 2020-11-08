@@ -12,7 +12,7 @@
 #include <fstream>
 
 
-#define STEPS 3
+#define STEPS 200
 #define TOL 1e-6
 
 // Called inside constructor
@@ -140,6 +140,7 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
 
      float* d_x;
      float* d_u;
+     float* d_u_swap;
      float* d_e;
 
      // value to set up inital state vector.
@@ -225,14 +226,24 @@ __global__ void set_data_(PointMassModelGpu* d_models,
                           float* lambda);
 
 __global__ void print_x(float* x, int steps, int samples, int s_dim);
+
 __global__ void print_u(float* u, int steps, int a_dim);
+
 __global__ void print_e(float* e, int steps, int samples, int a_dim);
+
 __global__ void print_beta(float* beta, int size);
+
 __global__ void print_nabla(float* nabla, int size);
+
 __global__ void print_lam(float* lamb, int size);
+
 __global__ void print_weights(float* weights, int samples);
+
 __global__ void print_costs(float* costs, int samples);
+
 __global__ void print_exp(float* exp, int samples);
+
+__global__ void shift_act(float* u, float* u_swap, int a_dim, int samples);
 
 __global__ void update_act_id_kernel(int steps, int t, int a_dim, int samples);
 
