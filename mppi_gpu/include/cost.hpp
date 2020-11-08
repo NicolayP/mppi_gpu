@@ -21,8 +21,8 @@ public:
                                   float* inv_s,
                                   int u_size);
 
-    __host__ __device__ float step_cost(float* x, float* u, float* e);
-    __host__ __device__ float final_cost(float* x);
+    __host__ __device__ float step_cost(float* x, float* u, float* e, int id, int t);
+    __host__ __device__ float final_cost(float* x, int id);
 private:
     float* _w;
     int _w_size;
