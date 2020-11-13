@@ -3,11 +3,20 @@
 #include <iostream>
 #include <math.h>
 
+#include <assert.h>
+
+#include <cstdio>
+#include <ctime>
+#include <chrono>
+#include <unistd.h>
+
+
 #define SIZE 256
 #define SHMEM_SIZE 256
 
 
-__host__ __device__ PointMassModelGpu::PointMassModelGpu(){
+__host__ __device__ PointMassModelGpu::PointMassModelGpu()
+{
     _x = nullptr;
     _u = nullptr;
     _e = nullptr;
@@ -26,6 +35,8 @@ __host__ __device__ PointMassModelGpu::PointMassModelGpu(){
     _cost = Cost(w, x_size, g, x_size, lambda);
     _c = 0;*/
 }
+
+
 
 __host__ __device__ void PointMassModelGpu::init(float* x,
                                                  float init,
@@ -143,6 +154,14 @@ __host__ __device__ void PointMassModelGpu::set_horizon(int horizon)
     _tau = horizon;
 }
 
+__host__ __device__ void PointMassModelGpu::set_x(float* x)
+{
+    for(int i =0; i < _x_size; i++)
+    {
+        _x[i] = x[i];
+    }
+}
+
 __host__ __device__ float* PointMassModelGpu::get_state(){ return _x;}
 
 __host__ __device__ int PointMassModelGpu::get_horizon(){ return _tau;}
@@ -231,6 +250,7 @@ PointMassModel::PointMassModel(int nb_sim, int steps, float dt)
     CUDA_CALL_CONST(cudaMalloc((void**)&d_g, sizeof(float)*state_dim));
     CUDA_CALL_CONST(cudaMalloc((void**)&d_w, sizeof(float)*state_dim));
 
+
     //CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*))
 
     cudaDeviceSynchronize();
@@ -254,18 +274,32 @@ PointMassModel::~PointMassModel()
     CUDA_CALL_CONST(cudaFree((void*)act_gain));
     CUDA_CALL_CONST(cudaFree((void*)d_models));
     CUDA_CALL_CONST(cudaFree((void*)rng_states));
+
 }
 
-void PointMassModel::sim()
+void PointMassModel::sim(float* next_act)
 {
+    //std::chrono::time_point<std::chrono::system_clock> t1;
+    //std::chrono::time_point<std::chrono::system_clock> t2;
+    //std::chrono::duration<double, std::milli> fp_ms;
+    //double delta;
     // launch 1 thread per simulation. Can later consider to
     // add dimensions to the block and thread of the kernel
     // to // enven more the code inside the simulation.
     // using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
     // and threadIdx.y & threadIdx.z.
-    std::cout << "Running simulations... : " << std::flush;
+    //std::cout << "Running simulations... : " << std::flush;
+    //t1 = std::chrono::system_clock::now();
+
     sim_gpu_kernel_<<<1 + n_sim_/SIZE, SIZE>>>(d_models, n_sim_, d_e, d_cost, rng_states);
     cudaDeviceSynchronize();
+
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+    //std::cout << "Done" << std::endl;
+
+    //std::cout << "Sim execution time: " << delta << "ms" << std::endl;
     /*
     std::cout << "Print x" << std::endl;
     print_x<<<1, 1>>>(d_x, STEPS, n_sim_, state_dim);
@@ -278,52 +312,134 @@ void PointMassModel::sim()
     cudaDeviceSynchronize();
     std::cout << "Print cost" << std::endl;
     print_costs<<<1, 1>>>(d_cost, n_sim_);
-    cudaDeviceSynchronize();
-    */
-    std::cout << "Done" << std::endl;
+    cudaDeviceSynchronize();*/
+
+
 
 
     // find min cost
-    std::cout << "Compute min cost... : " << std::flush;
+    //std::cout << "Compute min cost... : " << std::flush;
+
+    //t1 = std::chrono::system_clock::now();
+
     min_beta();
     //print_beta<<<1, 1>>>(d_beta, 1);
     cudaDeviceSynchronize();
-    std::cout << "Done" << std::endl;
 
-    std::cout << "Compute nabla... : " << std::flush;
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+
+    //std::cout << "Done" << std::endl;
+
+    //std::cout << "Beta execution time: " << delta << "ms" << std::endl;
+
+    //std::cout << "Compute nabla... : " << std::flush;
+
+    //t1 = std::chrono::system_clock::now();
+
     exp();
     //print_exp<<<1, 1>>>(d_exp, n_sim_);
     cudaDeviceSynchronize();
 
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+
+    //std::cout << "Exp execution time: " << delta << "ms" << std::endl;
+
+    //t1 = std::chrono::system_clock::now();
+
     nabla();
     //print_nabla<<<1, 1>>>(d_nabla, 1);
     cudaDeviceSynchronize();
-    std::cout << "Done" << std::endl;
+
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+
+    //std::cout << "Done" << std::endl;
+
+    //std::cout << "Nabla execution time: " << delta << "ms" << std::endl;
+
+
 
     //compute weights
-    std::cout << "Compute weights... : " << std::flush;
+    //std::cout << "Compute weights... : " << std::flush;
+
+    //t1 = std::chrono::system_clock::now();
+
+
     weights();
     //print_weights<<<1, 1>>>(d_weights, n_sim_);
     cudaDeviceSynchronize();
-    std::cout << "Done" << std::endl;
 
-    std::cout << "compute new actions... : " << std::endl;
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+
+    //std::cout << "Done" << std::endl;
+
+    //std::cout << "Weights execution time: " << delta << "ms" << std::endl;
+
+    //std::cout << "compute new actions... : " << std::flush;
+
+    //t1 = std::chrono::system_clock::now();
+
+    // CURRENT BOTTLENECK!!!
     update_act();
     //print_u<<<1, 1>>>(d_u, STEPS, act_dim);
     cudaDeviceSynchronize();
-    std::cout << "Done" << std::endl;
 
-    std::cout << "shift and init... : " << std::flush;
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+
+
+    //std::cout << "Done" << std::endl;
+
+    //std::cout << "Update action execution time: " << delta << "ms" << std::endl;
+
+    //std::cout << "send action... : " << std::flush;
+
+    //t1 = std::chrono::system_clock::now();
+
+    CUDA_CALL_CONST(cudaMemcpy(next_act, d_u, sizeof(float)*act_dim, cudaMemcpyDeviceToHost));
+
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+
+    //std::cout << "Done" << std::endl;
+
+    //std::cout << "Copy act execution time: " << delta << "ms" << std::endl;
+
+    //std::cout << "shift and init... : " << std::flush;
+
+    //t1 = std::chrono::system_clock::now();
+
+    std::cout << "Print u before shift" << std::endl;
+    print_u<<<1, 1>>>(d_u, STEPS, act_dim);
+    cudaDeviceSynchronize();
+
     shift_act<<<1 + n_sim_/SIZE, SIZE>>>(d_u, d_u_swap, act_dim, STEPS);
     CUDA_CALL_CONST(cudaMemcpy(d_u, d_u_swap, sizeof(float)*act_dim*STEPS, cudaMemcpyDeviceToDevice));
-    //print_u<<<1, 1>>>(d_u, STEPS, act_dim);
-    std::cout << "Not Implemented yet" << std::endl;
-    /*
-    std::cout << "send action... : " << std::flush;
-    std::cout << "Not Implemented yet" << std::endl;
 
-    */
+    std::cout << "\nPrint u after shift" << std::endl;
+    print_u<<<1, 1>>>(d_u, STEPS, act_dim);
+    //print_u<<<1, 1>>>(d_u, STEPS, act_dim);
+
+    //t2 = std::chrono::system_clock::now();
+    //fp_ms = t2 - t1;
+    //delta = fp_ms.count();
+
+    //std::cout << "Done" << std::endl;
+
+    //std::cout << "Shift & Init execution time: " << delta << "ms" << std::endl;
     cudaDeviceSynchronize();
+    //std::cout << std::endl;
+    //std::cout << std::endl;
+
 }
 
 void PointMassModel::memcpy_set_data(float* x, float* u, float* goal, float* w)
@@ -532,6 +648,8 @@ void PointMassModel::update_act()
 //    std::cout << "allocate data" << std::endl;
     CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*GRID_SIZE*act_dim));
 //    std::cout << "Data allocated" << std::endl;
+
+    // This is a problem, should parallelize this.
     for (int t=0; t < steps_; t++)
     {
         // TB Size
@@ -598,6 +716,12 @@ void PointMassModel::update_act()
 
     cudaDeviceSynchronize();
     CUDA_CALL_CONST(cudaFree((void*)v_r));
+}
+
+void PointMassModel::set_x(float* h_x)
+{
+    CUDA_CALL_CONST(cudaMemcpy(d_x_i, h_x, sizeof(float)*n_sim_*state_dim, cudaMemcpyHostToDevice));
+    set_x_kernel<<<1 + n_sim_/SIZE, SIZE>>>(d_models, d_x_i, n_sim_);
 }
 
 __global__ void sim_gpu_kernel_(PointMassModelGpu* d_models,
@@ -799,7 +923,9 @@ __global__ void copy_act(float* u, float* tmp, int t, int act_dim)
         //printf("u[%d]: %f\n", (tid + t*act_dim), u[tid + t*act_dim]);
         u[tid + t*act_dim] += tmp[tid];
 }
-// First implementation. Usually T << K so parallelize over K first.
+
+// First implementation. Usually T << K so parallelize over K first. BOTTLENECK OF THE CODE
+// NEEDS A LOT OF INVESTIGATION
 __global__ void update_act_kernel(float* v_r,
                                   float* w,
                                   float* e,
@@ -1114,6 +1240,15 @@ __global__ void set_data_(PointMassModelGpu* d_models,
     }
 }
 
+__global__ void set_x_kernel(PointMassModelGpu* d_models, float* x_i, int n)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < n)
+    {
+        d_models[tid].set_x(x_i);
+    }
+}
+
 __global__ void shift_act(float* u, float* u_swap, int a_dim, int samples)
 {
     int tid = blockDim.x*blockIdx.x + threadIdx.x;
@@ -1122,6 +1257,14 @@ __global__ void shift_act(float* u, float* u_swap, int a_dim, int samples)
         for(int j=0; j < a_dim; j++)
         {
             u_swap[(tid)*a_dim+j] = u[(tid+1)*a_dim+j];
+        }
+    }
+
+    // last element of shifited array is initalized with a repeating scheme
+    if(tid == samples - 1){
+        for(int j=0; j < a_dim; j++)
+        {
+            u_swap[(tid)*a_dim+j] = u[(tid)*a_dim+j];
         }
     }
 

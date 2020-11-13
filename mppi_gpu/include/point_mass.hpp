@@ -12,7 +12,7 @@
 #include <fstream>
 
 
-#define STEPS 200
+#define STEPS 2
 #define TOL 1e-6
 
 // Called inside constructor
@@ -70,6 +70,7 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
      __host__ __device__ void step(curandState* state);
      __host__ __device__ float run(curandState* state);
      __host__ __device__ void save_e();
+     __host__ __device__ void set_x(float* x);
      __host__ __device__ void set_state(float* x);
      __host__ __device__ void set_horizon(int horizon);
      __host__ __device__ float* get_state();
@@ -119,8 +120,9 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
  public:
      PointMassModel(int nb_sim, int steps, float dt);
      ~PointMassModel();
-     void sim();
+     void sim(float* next_act);
      void memcpy_set_data(float* x, float* u, float* goal, float* w);
+     void get_x(float* x);
      void memcpy_get_data(float* x_all, float* e);
      void get_inf(float* x, float* u, float* e, float* cost, float* beta, float* nabla, float* weight);
      void exp();
@@ -129,6 +131,7 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
      void weights();
      void update_act();
      void update_act_id();
+     void set_x(float* x);
      //void set_steps(int steps);
      //int get_steps();
      //void set_nb_sim(int n);
@@ -177,6 +180,7 @@ void gpuAssert(cudaError_t code, char* file, int line, bool abort=true)
      float _dt;
 
      curandState* rng_states;
+
  };
 
  /*
@@ -247,6 +251,6 @@ __global__ void shift_act(float* u, float* u_swap, int a_dim, int samples);
 
 __global__ void update_act_id_kernel(int steps, int t, int a_dim, int samples);
 
-
+__global__ void set_x_kernel(PointMassModelGpu* d_models, float* x_i, int n);
 
 #endif

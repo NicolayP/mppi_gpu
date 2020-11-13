@@ -1,4 +1,5 @@
 #include "point_mass.hpp"
+#include "mppi_env.hpp"
 #include <iostream>
 #include <fstream>
 
@@ -22,83 +23,6 @@
 * on the host device.
 */
 
-/*
-bool test_sim_gpu(float* data,
-                  int samples,
-                  int state_dim,
-                  int act_dim,
-                  float dt,
-                  float act,
-                  float init){
-
-    std::chrono::time_point<std::chrono::system_clock> t1;
-    std::chrono::time_point<std::chrono::system_clock> t2;
-    std::chrono::duration<double, std::milli> fp_ms;
-    double delta;
-
-    PointMassModelGpu* models = new PointMassModelGpu[samples];
-    float** x;
-    float* u;
-    float x_gain[state_dim];
-    float u_gain[act_dim];
-
-    u_gain[0] = dt*dt/2.0;
-    u_gain[1] = dt;
-    x_gain[0] = 1;
-    x_gain[1] = dt;
-    x_gain[2] = 0;
-    x_gain[3] = 1;
-
-    x = (float**) malloc(sizeof(float*)*samples);
-    u = (float*) malloc(sizeof(float)*STEPS*act_dim);
-
-    for(int i=0; i < STEPS; i++){
-        u[i*act_dim + 0] = act;
-        u[i*act_dim + 1] = act;
-    }
-
-    for(int i=0; i < samples; i++){
-        x[i] = (float*) malloc(sizeof(float)*STEPS*state_dim);
-        x[i][0] = init;
-        x[i][1] = init;
-        x[i][2] = init;
-        x[i][3] = init;
-        models[i].init(x[i], 0, u, x_gain, state_dim, u_gain, act_dim);
-    }
-
-    t1 = std::chrono::system_clock::now();
-
-    // run the same code for on the cpu to evaluate the improvement.
-    for(int i=0; i < samples; i++){
-        models[i].run();
-    }
-
-    t2 = std::chrono::system_clock::now();
-    fp_ms = t2 - t1;
-    delta = fp_ms.count();
-
-    std::cout << "Sequencial execution time: " << delta << "ms" << std::endl;
-
-    bool error=true;
-    // free the memory.
-    for(int i=0; i<samples; i++){
-        for (int j=0; j<STEPS; j++){
-            for (int k=0; k<state_dim; k++){
-                if (!fabs(data[i*STEPS*state_dim + j*state_dim + k] - x[i][j*state_dim + k]) < TOL ){
-                    error=false;
-                }
-            }
-        }
-    }
-    for(int i=0; i < samples; i++){
-        free(x[i]);
-    }
-    free(x);
-    free(u);
-    delete models;
-    return error;
-}
-*/
 
 void to_csv(std::string filename,
             float* x,
@@ -187,6 +111,8 @@ void to_csv2(std::string filename,
 }
 
 int main(){
+    char* modelFile = "../envs/point_mass.xml";
+    char* mjkey = "../lib/contrib/mjkey.txt";
 
 
     std::chrono::time_point<std::chrono::system_clock> t1;
@@ -196,8 +122,7 @@ int main(){
 
     int act_dim = 2;
     int state_dim = 4;
-
-    int n = 3000;
+    int n = 3;
 
     float* x = (float*) malloc(sizeof(float)*n*STEPS*state_dim);
     float* u = (float*) malloc(sizeof(float)*STEPS*act_dim);
@@ -212,8 +137,10 @@ int main(){
     //bool test = false;
     bool save = true;
     std::string filename("to_plot.csv");
+    PointMassEnv env = PointMassEnv(modelFile, mjkey, true);
 
     PointMassModel* model = new PointMassModel(n, STEPS, dt);
+    bool done=false;
     /*
     * The state data stored on host. In this example,
     * the state is only one scalar but is stored on a
@@ -251,25 +178,37 @@ int main(){
     w[2] = 1.0;
     w[3] = 1.0;
 
-    for (int i=0; i < n; i++){
-        h_x[i*state_dim+0] = 0.;
-        h_x[i*state_dim+1] = 0.;
-        h_x[i*state_dim+2] = 0.;
-        h_x[i*state_dim+3] = 0.;
-    }
+    env.get_x(h_x);
 
     for (int j=0; j < STEPS; j++){
         h_u[(j*act_dim)+0] = 0.;
         h_u[(j*act_dim)+1] = 0.;
     }
     // send the data on the device.
+
+    float* next_act = (float*) malloc(sizeof(float)*act_dim);
+
     model->memcpy_set_data(h_x, h_u, goal, w);
 
 
     t1 = std::chrono::system_clock::now();
 
     // run the multiple simulation on the device.
-    model->sim();
+    while(!done){
+        model->sim(next_act);
+        done = env.simulate(next_act);
+        std::cout << "next_act: " << next_act[0] << ", " << next_act[1] << '\n';
+        env.get_x(h_x);
+        model->set_x(h_x);
+    }
+
+    //send act to sim;
+
+    // collect new state;
+
+    // set state in controller;
+
+    // next step
 
 
     t2 = std::chrono::system_clock::now();
@@ -279,9 +218,9 @@ int main(){
 
     std::cout << "GPU execution time: " << delta << "ms" << std::endl;
 
-    model->get_inf(x, u, e, cost, beta, nabla, weight);
+    //model->get_inf(x, u, e, cost, beta, nabla, weight);
     // get the data from the device.
-    model->memcpy_get_data(h_o, h_e);
+    //model->memcpy_get_data(h_o, h_e);
 
     if(save){
         //to_csv(filename, h_o, h_e, n, STEPS, state_dim, act_dim);
