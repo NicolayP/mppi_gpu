@@ -1,3 +1,5 @@
 */build
 */data/*
 gpu*
+*/lib/contrib/mjkey.txt
+*.csv
