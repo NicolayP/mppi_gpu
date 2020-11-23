@@ -8,14 +8,12 @@
 #include <unistd.h>
 typedef std::chrono::high_resolution_clock Clock;
 
-inline bool is_file (const char* name)
-{
+inline bool is_file (const char* name) {
   struct stat buffer;
   return (stat (name, &buffer) == 0);
 }
 
-PointMassEnv::PointMassEnv(const char* modelFile, const char* mjkey, bool view)
-{
+PointMassEnv::PointMassEnv(const char* modelFile, const char* mjkey, bool view) {
   std::cout << GLFW_VERSION_MAJOR << "." << GLFW_VERSION_MINOR << "." << GLFW_VERSION_REVISION << std::endl;
   std::cout << glfwGetVersionString() << std::endl;
   info = string("Point Mass Environment info");
@@ -59,11 +57,10 @@ PointMassEnv::PointMassEnv(const char* modelFile, const char* mjkey, bool view)
     mjr_makeContext(m, &con, mjFONTSCALE_100);
   }
 
-  _simend = d->time + 0.1;
+  _simend = d->time + 0.005;
 }
 
-PointMassEnv::~PointMassEnv()
-{
+PointMassEnv::~PointMassEnv() {
   // close GLFW, free visualization storage
   glfwTerminate();
   mjv_freeScene(&scn);
@@ -75,13 +72,11 @@ PointMassEnv::~PointMassEnv()
   mj_deleteData(d);
 }
 
-string PointMassEnv::print() const
-{
+string PointMassEnv::print() const {
   return Env::print();
 }
 
-bool PointMassEnv::simulate(float* u)
-{
+bool PointMassEnv::simulate(float* u) {
   // run main loop, target real-time simulation and 60 fps rendering
 
   if( !glfwWindowShouldClose(window) && d->time < _simend ){
@@ -139,8 +134,7 @@ bool PointMassEnv::simulate(float* u)
   return true;
 }
 
-void PointMassEnv::step(float* x, float* u)
-{
+void PointMassEnv::step(float* x, float* u) {
   d->ctrl[0] = u[0];
   d->ctrl[1] = u[1];
   mj_step(m, d);
@@ -150,8 +144,7 @@ void PointMassEnv::step(float* x, float* u)
   x[3] = d->qvel[1];
 }
 
-void PointMassEnv::get_x(float* x)
-{
+void PointMassEnv::get_x(float* x) {
     x[0] = d->qpos[0];
     x[1] = d->qpos[1];
     x[2] = d->qpos[2];

@@ -84,12 +84,12 @@ void to_csv2(std::string filename,
     outfile << "," << "c" <<  "," << "w" << std::endl;
 
     for (int i=0; i < sample; i++){
-        for (int j=0; j < size; j++){
+        for (int j=0; j < size + 1 ; j++){
             outfile << i << ","
-                    << x[i*size*s_dim + j*s_dim + 0] << ","
-                    << x[i*size*s_dim + j*s_dim + 1] << ","
-                    << x[i*size*s_dim + j*s_dim + 2] << ","
-                    << x[i*size*s_dim + j*s_dim + 3] << ","
+                    << x[i*(size+1)*s_dim + j*s_dim + 0] << ","
+                    << x[i*(size+1)*s_dim + j*s_dim + 1] << ","
+                    << x[i*(size+1)*s_dim + j*s_dim + 2] << ","
+                    << x[i*(size+1)*s_dim + j*s_dim + 3] << ","
                     << e[i*size*a_dim + j*a_dim + 0] << ","
                     << e[i*size*a_dim + j*a_dim + 1];
             // U is of size steps
@@ -122,9 +122,9 @@ int main(){
 
     int act_dim = 2;
     int state_dim = 4;
-    int n = 3;
+    int n = 3000;
 
-    float* x = (float*) malloc(sizeof(float)*n*STEPS*state_dim);
+    float* x = (float*) malloc(sizeof(float)*n*(STEPS+1)*state_dim);
     float* u = (float*) malloc(sizeof(float)*STEPS*act_dim);
     float* e = (float*) malloc(sizeof(float)*n*STEPS*act_dim);
     float* cost = (float*) malloc(sizeof(float)*n);
@@ -139,7 +139,7 @@ int main(){
     std::string filename("to_plot.csv");
     PointMassEnv env = PointMassEnv(modelFile, mjkey, true);
 
-    PointMassModel* model = new PointMassModel(n, STEPS, dt);
+    PointMassModel* model = new PointMassModel(n, STEPS, dt, false);
     bool done=false;
     /*
     * The state data stored on host. In this example,
@@ -161,6 +161,7 @@ int main(){
     float* w;
     // allocate and init and res data.
     h_x = (float*) malloc(sizeof(float)*n*state_dim);
+    x = (float*) malloc(sizeof(float)*state_dim);
     h_u = (float*) malloc(sizeof(float)*STEPS*act_dim);
 
     h_o = (float*) malloc(sizeof(float)*n*STEPS*state_dim);
@@ -175,10 +176,10 @@ int main(){
     w = (float*) malloc(sizeof(float)*state_dim);
     w[0] = 1.0;
     w[1] = 1.0;
-    w[2] = 1.0;
-    w[3] = 1.0;
+    w[2] = 0.025;
+    w[3] = 0.025;
 
-    env.get_x(h_x);
+    env.get_x(x);
 
     for (int j=0; j < STEPS; j++){
         h_u[(j*act_dim)+0] = 0.;
@@ -188,18 +189,21 @@ int main(){
 
     float* next_act = (float*) malloc(sizeof(float)*act_dim);
 
-    model->memcpy_set_data(h_x, h_u, goal, w);
+    model->memcpy_set_data(x, h_u, goal, w);
 
-
-    t1 = std::chrono::system_clock::now();
 
     // run the multiple simulation on the device.
     while(!done){
+
+        t1 = std::chrono::system_clock::now();
         model->sim(next_act);
+        t2 = std::chrono::system_clock::now();
+        fp_ms += t2 - t1;
+
         done = env.simulate(next_act);
         std::cout << "next_act: " << next_act[0] << ", " << next_act[1] << '\n';
-        env.get_x(h_x);
-        model->set_x(h_x);
+        env.get_x(x);
+        model->set_x(x);
     }
 
     //send act to sim;
@@ -211,8 +215,6 @@ int main(){
     // next step
 
 
-    t2 = std::chrono::system_clock::now();
-    fp_ms = t2 - t1;
     delta = fp_ms.count();
 
 
@@ -223,8 +225,8 @@ int main(){
     //model->memcpy_get_data(h_o, h_e);
 
     if(save){
-        //to_csv(filename, h_o, h_e, n, STEPS, state_dim, act_dim);
-        to_csv2(filename, x, u, h_e, cost, beta, nabla, weight, n, STEPS, state_dim, act_dim);
+        model->get_inf(h_x, h_u, h_e, cost, beta, nabla, weight);
+        to_csv2(filename, h_x, h_u, h_e, cost, beta, nabla, weight, n, STEPS, state_dim, act_dim);
     }
 
     std::cout << "Freeing memory... : " << std::flush;

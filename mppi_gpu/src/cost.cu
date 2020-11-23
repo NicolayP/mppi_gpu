@@ -3,18 +3,17 @@
 #include <stdlib.h>
 
 
-__host__ __device__ Cost::Cost(){
+__host__ __device__ Cost::Cost () {
 
 }
 
-__host__ __device__ Cost::Cost(float* w,
+__host__ __device__ Cost::Cost (float* w,
                                int w_size,
                                float* goal,
                                int goal_size,
                                float lambda,
                                float* inv_s,
-                               int u_size)
-{
+                               int u_size) {
     _w = w;
     _w_size = w_size;
     _goal = goal;
@@ -24,14 +23,13 @@ __host__ __device__ Cost::Cost(float* w,
     _inv_s = inv_s;
 }
 
-__host__ __device__ void Cost::init(float* w,
+__host__ __device__ void Cost::init (float* w,
                                     int w_size,
                                     float* goal,
                                     int goal_size,
                                     float lambda,
                                     float* inv_s,
-                                    int u_size)
-{
+                                    int u_size) {
     _w = w;
     _w_size = w_size;
     _goal = goal;
@@ -41,30 +39,26 @@ __host__ __device__ void Cost::init(float* w,
     _inv_s = inv_s;
 }
 
-__host__ __device__ float Cost::step_cost(float* x, float* u, float* e, int id, int t)
-{
+__host__ __device__ float Cost::step_cost (float* x, float* u, float* e, int id, int t) {
     float res(0);
-    for(int i=0; i < _w_size; i++)
-    {
-        res += (x[i] - _goal[i])*_w[i]*(x[i] - _goal[i]);
-    }
-    //printf("tmp_0[%d, %d]: %f\n", t, id, res);
 
-    for(int i=0; i < _u_size; i++)
-    {
+    for (int i=0; i < _u_size; i++) {
         res += u[i]*_inv_s[i]*e[i];
     }
-    //printf("tmp_1[%d, %d]: %f\n", t, id, res);
+    res *= _lambda;
 
-    return _lambda*res;
-}
-
-__host__ __device__ float Cost::final_cost(float* x, int id)
-{
-    float res(0);
-    for (int i=0; i < _w_size; i++){
+    for (int i=0; i < _w_size; i++) {
         res += (x[i] - _goal[i])*_w[i]*(x[i] - _goal[i]);
     }
-    //printf("tmp_2[%d]: %f\n", id, res);
+
+    return res;
+}
+
+__host__ __device__ float Cost::final_cost (float* x, int id) {
+    float res(0);
+    
+    for (int i=0; i < _w_size; i++) {
+        res += (x[i] - _goal[i])*_w[i]*(x[i] - _goal[i]);
+    }
     return res;
 }
