@@ -1,4 +1,5 @@
 #include "point_mass.hpp"
+#include "mppi_utils.hpp"
 
 #include <iostream>
 #include <math.h>
@@ -15,159 +16,16 @@
 #define SHMEM_SIZE 256
 
 
-__host__ __device__ PointMassModelGpu::PointMassModelGpu () {
-    _x = nullptr;
-    _u = nullptr;
-    _e = nullptr;
-    _tau = STEPS;
-    _t = 1;
-    _id = 0;
-    /*
-    // Local copy of the weight and the goal.
-    float* w = (float*) malloc(sizeof(float)*x_size);
-    float* g = (float*) malloc(sizeof(float)*x_size);
-    for (int i = 0; i < x_size; i++)
-    {
-        w[i] = weight[i];
-        g[i] = goal[i];
-    }
-    _cost = Cost(w, x_size, g, x_size, lambda);
-    _c = 0;*/
-}
-
-__host__ __device__ void PointMassModelGpu::init (float* x,
-                                                 float* init,
-                                                 float* u,
-                                                 float* e,
-                                                 float* x_gain,
-                                                 int x_size,
-                                                 float* u_gain,
-                                                 int u_size,
-                                                 float* weight,
-                                                 float* goal,
-                                                 float lambda,
-                                                 int id,
-                                                 bool verbose) {
-    // TODO: cache x* in sm memory for faster access
-    _x = x;
-    _u = u;
-    set_x(init);
-    _tau = STEPS;
-    // Point the gain pointers to the right address
-    _x_gain = x_gain;
-    _x_size = x_size;
-
-    _u_gain = u_gain;
-    _u_size = u_size;
-
-    _t = 1;
-    // Local copy of the weight and the goal.
-    _w = (float*) malloc(sizeof(float)*_x_size);
-    _g = (float*) malloc(sizeof(float)*_x_size);
-    // local copy of the error for faster access
-    _e = (float*) malloc(sizeof(float)*_tau*_u_size);
-    glob_e = e;
-
-    _inv_s = (float*) malloc(sizeof(float)*_u_size);
-    _inv_s[0] = 1.0;
-    _inv_s[1] = 1.0;
-
-    for (int i = 0; i < _x_size; i++)
-    {
-        _w[i] = weight[i];
-        _g[i] = goal[i];
-    }
-
-    for (int i = 0; i < _tau; i++){
-        _e[i*_u_size + 0] = e[i*_u_size + 0];
-        _e[i*_u_size + 1] = e[i*_u_size + 1];
-    }
-    _cost = Cost(_w, _x_size, _g, _x_size, lambda, _inv_s, u_size);
-    _c = 0;
-    _id = id;
-
-    _verb = verbose;
-    return;
-}
-
-__host__ __device__ void PointMassModelGpu::step (curandState* state, int t) {
-
-#ifdef __CUDA_ARCH__
-    for (int i=0; i < _u_size; i++) {
-        _e[(t)*_u_size + i] = 0.025* curand_normal(state);
-        if (_verb) {
-            printf("id: %d, _e[%d]: %f\n", _id, (t)*_u_size + i, _e[(t)*_u_size + i]);
-        }
-    }
-
-#else
-    _e[(t)*_u_size] += 0; //cpu random uniform;
-    _e[(t)*_u_size + 1] += 0; //cpu random uniform;
-#endif
-
-    for(int i=0; i < 2; i++){
-        _x[(t+1)*_x_size+i] = _x_gain[0]*_x[(t)*_x_size+i] +
-        _x_gain[1]*_x[(t)*_x_size+i+2] +
-        _u_gain[0]*(_u[(t)*_u_size + i] + _e[(t)*_u_size + i]);
-
-        _x[(t+1)*_x_size+i+2] = _x_gain[2]*_x[(t)*_x_size+i] +
-        _x_gain[3]*_x[(t)*_x_size+i+2] +
-        _u_gain[1]*(_u[(t)*_u_size + i] + _e[(t)*_u_size + i]);
-    }
-    _c += _cost.step_cost(&_x[(t+1)*_x_size], &_u[(t)*_u_size], &_e[(t)*_u_size], _id, t);
-    //printf("_c[%d]: %f\n", _id, _c);
-}
-
-__host__ __device__ float PointMassModelGpu::run (curandState* state) {
-    for (int t = 0; t < _tau; t++ ){
-        step(state, t);
-    }
-    _c += _cost.final_cost(&_x[(_tau-1)*_x_size], _id);
-    //printf("_c[%d, %d]: %f\n", (_tau-1), _id, _c);
-    // save action to global pointer
-    save_e();
-    return _c;
-}
-
-__host__ __device__ void PointMassModelGpu::save_e () {
-    for (int t = 0; t < _tau; t++)
-    {
-        glob_e[(t)*_u_size] = _e[(t)*_u_size];
-        glob_e[(t)*_u_size + 1] = _e[(t)*_u_size + 1];
-    }
-}
-
-__host__ __device__ void PointMassModelGpu::set_state (float* x) {
-    _x = x;
-}
-
-__host__ __device__ void PointMassModelGpu::set_horizon (int horizon) {
-    /*
-    * DO NOT USE ATM, when steps change, we need to update
-    * the pointer x for the extra allocate space. As all the data
-    * is represented in a continous array failling to do so will
-    * produce a seg fault and probably leave the memory in a inconsistant
-    * state.
-    */
-    _tau = horizon;
-}
-
-__host__ __device__ void PointMassModelGpu::set_x (float* x) {
-    for(int i =0; i < _x_size; i++)
-    {
-        _x[i] = x[i];
-    }
-}
-
-__host__ __device__ float* PointMassModelGpu::get_state () { return _x;}
-
-__host__ __device__ int PointMassModelGpu::get_horizon () { return _tau;}
-
-PointMassModel::PointMassModel (int nb_sim, int steps, float dt, bool verbose) {
-    n_sim_ = nb_sim;
-    steps_ = steps;
-    act_dim = 2;
-    state_dim = 4;
+PointMassModel::PointMassModel (int nb_sim,
+                                int steps,
+                                float dt,
+                                int state_dim,
+                                int act_dim,
+                                bool verbose) {
+    _n_sim = nb_sim;
+    _steps = steps;
+    _state_dim = state_dim;
+    _act_dim = act_dim;
 
     _dt = dt;
 
@@ -177,75 +35,69 @@ PointMassModel::PointMassModel (int nb_sim, int steps, float dt, bool verbose) {
     * template type associated with the class wich will
     * represent the mppi domain.
     */
-    bytes_ = sizeof(float)*(steps_+1)*n_sim_*state_dim;
+    _bytes = sizeof(float)*(_steps+1)*_n_sim*_state_dim;
 
     //host data used to send data to memory.
-    float state_[4];
-    float act_[2];
+    float state[4];
+    float act[2];
 
     _verb = verbose;
 
-    act_[0] = _dt*_dt/2.0;
-    act_[1] = _dt;
-    state_[0] = 1;
-    state_[1] = _dt;
-    state_[2] = 0;
-    state_[3] = 1;
+    act[0] = _dt*_dt/2.0;
+    act[1] = _dt;
+    state[0] = 1;
+    state[1] = _dt;
+    state[2] = 0;
+    state[3] = 1;
 
     float lambda[0];
     lambda[0] = 1.;
 
-    int GRID_SIZE = n_sim_ / SIZE / 2 + 1;
+    int GRID_SIZE = _n_sim / SIZE / 2 + 1;
     // *Allocate the data on tahe GPU.*
     std::cout << "Allocating Space... : " << std::flush;
     // allocate space for all our simulation objects.
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_models, sizeof(PointMassModelGpu)*n_sim_));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_models, sizeof(PointMassModelGpu)*_n_sim));
     // allocate space for the init_state array. int* x[n_sim]
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_x_i, sizeof(float)*n_sim_*state_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_x_i, sizeof(float)*_n_sim*_state_dim));
     // allocate data space, continous in memeory so int* x[n_sim*steps_]
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_x, sizeof(float)*n_sim_*(steps_+1)*state_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_x, sizeof(float)*_n_sim*(_steps+1)*_state_dim));
     // set the memory with 0s.
-    CUDA_CALL_CONST(cudaMemset((void*)d_x, 0, sizeof(float)*n_sim_*(steps_+1)*state_dim));
+    CUDA_CALL_CONST(cudaMemset((void*)_x, 0, sizeof(float)*_n_sim*(_steps+1)*_state_dim));
     // allocate space for action.
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_e, sizeof(float)*n_sim_*steps_*act_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_e, sizeof(float)*_n_sim*_steps*_act_dim));
 
-    CUDA_CALL_CONST(cudaMemset((void*)d_e, 0, sizeof(float)*n_sim_*steps_*act_dim));
+    CUDA_CALL_CONST(cudaMemset((void*)_e, 0, sizeof(float)*_n_sim*_steps*_act_dim));
 
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_u, sizeof(float)*steps_*act_dim));
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_u_swap, sizeof(float)*steps_*act_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_u, sizeof(float)*_steps*_act_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_u_swap, sizeof(float)*_steps*_act_dim));
 
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_cost, sizeof(float)*n_sim_));
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_exp, sizeof(float)*n_sim_));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_cost, sizeof(float)*_n_sim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_exp, sizeof(float)*_n_sim));
 
     // container for the min value and the normalisation term.
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_beta, sizeof(float)));
-    // used for the reduction algorithm
-    CUDA_CALL_CONST(cudaMalloc((void**)&_d_beta, sizeof(float)*GRID_SIZE));
-    CUDA_CALL_CONST(cudaMemset((void*)_d_beta, 0, sizeof(float)*GRID_SIZE));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_beta, sizeof(float)));
 
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_nabla, sizeof(float)));
-    // used for the reduction algorithm
-    CUDA_CALL_CONST(cudaMalloc((void**)&_d_nabla, sizeof(float)*GRID_SIZE));
-    CUDA_CALL_CONST(cudaMemset((void*)_d_nabla, 0, sizeof(float)*GRID_SIZE));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_nabla, sizeof(float)));
 
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_lambda, sizeof(float)));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_lambda, sizeof(float)));
 
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_weights, sizeof(float)*n_sim_));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_weights, sizeof(float)*_n_sim));
 
-    CUDA_CALL_CONST(cudaMemcpy(d_lambda, lambda, sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_lambda, lambda, sizeof(float), cudaMemcpyHostToDevice));
 
 
     // Set gain memory
-    CUDA_CALL_CONST(cudaMalloc((void**)&state_gain, sizeof(float)*state_dim));
-    CUDA_CALL_CONST(cudaMalloc((void**)&act_gain, sizeof(float)*act_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_state_gain, sizeof(float)*_state_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_act_gain, sizeof(float)*_act_dim));
 
-    CUDA_CALL_CONST(cudaMemcpy(state_gain, state_, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
-    CUDA_CALL_CONST(cudaMemcpy(act_gain, act_, sizeof(float)*act_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_state_gain, state, sizeof(float)*_state_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_act_gain, act, sizeof(float)*_act_dim, cudaMemcpyHostToDevice));
 
-    CUDA_CALL_CONST(cudaMalloc((void**)&rng_states, sizeof(curandState_t)*n_sim_));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_rng_states, sizeof(curandState_t)*_n_sim));
 
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_g, sizeof(float)*state_dim));
-    CUDA_CALL_CONST(cudaMalloc((void**)&d_w, sizeof(float)*state_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_g, sizeof(float)*_state_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_w, sizeof(float)*_state_dim));
 
 
     //CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*))
@@ -255,43 +107,42 @@ PointMassModel::PointMassModel (int nb_sim, int steps, float dt, bool verbose) {
 }
 
 PointMassModel::~PointMassModel () {
-    CUDA_CALL_CONST(cudaFree((void*)d_x));
-    CUDA_CALL_CONST(cudaFree((void*)d_x_i));
-    CUDA_CALL_CONST(cudaFree((void*)d_u));
-    CUDA_CALL_CONST(cudaFree((void*)d_u_swap));
-    CUDA_CALL_CONST(cudaFree((void*)d_e));
-    CUDA_CALL_CONST(cudaFree((void*)d_cost));
-    CUDA_CALL_CONST(cudaFree((void*)d_exp));
-    CUDA_CALL_CONST(cudaFree((void*)d_beta));
-    CUDA_CALL_CONST(cudaFree((void*)_d_beta));
-    CUDA_CALL_CONST(cudaFree((void*)d_nabla));
-    CUDA_CALL_CONST(cudaFree((void*)_d_nabla));
-    CUDA_CALL_CONST(cudaFree((void*)state_gain));
-    CUDA_CALL_CONST(cudaFree((void*)act_gain));
-    CUDA_CALL_CONST(cudaFree((void*)d_models));
-    CUDA_CALL_CONST(cudaFree((void*)rng_states));
+    CUDA_CALL_CONST(cudaFree((void*)_x));
+    CUDA_CALL_CONST(cudaFree((void*)_x_i));
+    CUDA_CALL_CONST(cudaFree((void*)_u));
+    CUDA_CALL_CONST(cudaFree((void*)_u_swap));
+    CUDA_CALL_CONST(cudaFree((void*)_e));
+    CUDA_CALL_CONST(cudaFree((void*)_cost));
+    CUDA_CALL_CONST(cudaFree((void*)_exp));
+    CUDA_CALL_CONST(cudaFree((void*)_beta));
+    CUDA_CALL_CONST(cudaFree((void*)_nabla));
+    CUDA_CALL_CONST(cudaFree((void*)_lambda));
+    CUDA_CALL_CONST(cudaFree((void*)_weights));
+    CUDA_CALL_CONST(cudaFree((void*)_models));
+    CUDA_CALL_CONST(cudaFree((void*)_g));
+    CUDA_CALL_CONST(cudaFree((void*)_w));
+    CUDA_CALL_CONST(cudaFree((void*)_state_gain));
+    CUDA_CALL_CONST(cudaFree((void*)_act_gain));
+    CUDA_CALL_CONST(cudaFree((void*)_rng_states));
 
 }
 
 void PointMassModel::sim (float* next_act) {
-    //std::chrono::time_point<std::chrono::system_clock> t1;
-    //std::chrono::time_point<std::chrono::system_clock> t2;
-    //std::chrono::duration<double, std::milli> fp_ms;
-    //double delta;
-    // launch 1 thread per simulation. Can later consider to
-    // add dimensions to the block and thread of the kernel
-    // to // enven more the code inside the simulation.
-    // using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
-    // and threadIdx.y & threadIdx.z.
+    /* launch 1 thread per simulation. Can later consider to
+     * add dimensions to the block and thread of the kernel
+     * to // enven more the code inside the simulation.
+     * using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
+     * and threadIdx.y & threadIdx.z. */
+
     //std::cout << "Running simulations... : " << std::flush;
     //t1 = std::chrono::system_clock::now();
     if (_verb) {
         std::cout << "Print x before Sim" << std::endl;
-        print_x<<<1, 1>>>(d_x, (STEPS+1), n_sim_, state_dim);
+        print_x<<<1, 1>>>(_x, (_steps+1), _n_sim, _state_dim);
         cudaDeviceSynchronize();
     }
 
-    sim_gpu_kernel_<<<1 + n_sim_/SIZE, SIZE>>>(d_models, n_sim_, d_e, d_cost, rng_states);
+    sim();
     cudaDeviceSynchronize();
 
     //t2 = std::chrono::system_clock::now();
@@ -302,7 +153,7 @@ void PointMassModel::sim (float* next_act) {
     //std::cout << "Sim execution time: " << delta << "ms" << std::endl;
     if (_verb) {
         std::cout << "Print x after Sim" << std::endl;
-        print_x<<<1, 1>>>(d_x, (STEPS+1), n_sim_, state_dim);
+        print_x<<<1, 1>>>(_x, (_steps+1), _n_sim, _state_dim);
         cudaDeviceSynchronize();
     }
     /*
@@ -310,7 +161,9 @@ void PointMassModel::sim (float* next_act) {
     print_u<<<1, 1>>>(d_u, STEPS, act_dim);
     cudaDeviceSynchronize();
     std::cout << "Print e" << std::endl;
-    print_e<<<1, 1>>>(d_e, STEPS, n_sim_, act_dim);
+    std::cout << _act_dim << std::endl;
+
+    print_e<<<1, 1>>>(_e, _steps, _n_sim, _act_dim);
     cudaDeviceSynchronize();*/
 
     // find min cost
@@ -318,9 +171,9 @@ void PointMassModel::sim (float* next_act) {
 
     //t1 = std::chrono::system_clock::now();
 
-    min_beta();
+    beta();
     if (_verb) {
-        print_beta<<<1, 1>>>(d_beta, 1);
+        print_beta<<<1, 1>>>(_beta, 1);
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
@@ -334,7 +187,7 @@ void PointMassModel::sim (float* next_act) {
 
     exp();
     if (_verb) {
-        print_exp<<<1, 1>>>(d_exp, n_sim_);
+        print_exp<<<1, 1>>>(_exp, _n_sim);
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
@@ -346,7 +199,7 @@ void PointMassModel::sim (float* next_act) {
 
     nabla();
     if (_verb) {
-        print_nabla<<<1, 1>>>(d_nabla, 1);
+        print_nabla<<<1, 1>>>(_nabla, 1);
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
@@ -362,7 +215,7 @@ void PointMassModel::sim (float* next_act) {
 
     weights();
     if (true) {
-        print_sum_weights<<<1, 1>>>(d_weights, n_sim_);
+        print_sum_weights<<<1, 1>>>(_weights, _n_sim);
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
@@ -388,13 +241,13 @@ void PointMassModel::sim (float* next_act) {
     //std::cout << "send action... : " << std::flush;
 
     if (_verb) {
-        print_u<<<1, 1>>>(d_u, STEPS, act_dim);
+        print_u<<<1, 1>>>(_u, _steps, _act_dim);
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
 
     //t1 = std::chrono::system_clock::now();
-    CUDA_CALL_CONST(cudaMemcpy(next_act, d_u, sizeof(float)*act_dim, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(next_act, _u, sizeof(float)*_act_dim, cudaMemcpyDeviceToHost));
     cudaDeviceSynchronize();
     //t2 = std::chrono::system_clock::now();
     //fp_ms = t2 - t1;
@@ -405,8 +258,8 @@ void PointMassModel::sim (float* next_act) {
 
 
     //t1 = std::chrono::system_clock::now();
-    shift_act<<<1 + n_sim_/SIZE, SIZE>>>(d_u, d_u_swap, act_dim, STEPS);
-    CUDA_CALL_CONST(cudaMemcpy(d_u, d_u_swap, sizeof(float)*act_dim*STEPS, cudaMemcpyDeviceToDevice));
+    shift_act<<<1 + _n_sim/SIZE, SIZE>>>(_u, _u_swap, _act_dim, _steps);
+    CUDA_CALL_CONST(cudaMemcpy(_u, _u_swap, sizeof(float)*_act_dim*_steps, cudaMemcpyDeviceToDevice));
     //t2 = std::chrono::system_clock::now();
     //fp_ms = t2 - t1;
     //delta = fp_ms.count();
@@ -418,33 +271,33 @@ void PointMassModel::sim (float* next_act) {
 }
 
 void PointMassModel::memcpy_set_data (float* x, float* u, float* goal, float* w) {
-    CUDA_CALL_CONST(cudaMemcpy(d_x_i, x, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
-    CUDA_CALL_CONST(cudaMemcpy(d_u, u, sizeof(float)*act_dim*steps_, cudaMemcpyHostToDevice));
-    CUDA_CALL_CONST(cudaMemcpy(d_g, goal, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
-    CUDA_CALL_CONST(cudaMemcpy(d_w, w, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_x_i, x, sizeof(float)*_state_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_u, u, sizeof(float)*_act_dim*_steps, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_g, goal, sizeof(float)*_state_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_w, w, sizeof(float)*_state_dim, cudaMemcpyHostToDevice));
     std::cout << "Setting inital state of the sims... : " << std::flush;
-    set_data<<<1 + n_sim_/256, 256>>>(d_models,
-                                        d_x_i,
-                                        d_x,
-                                        d_u,
-                                        d_e,
-                                        n_sim_,
-                                        steps_,
-                                        state_gain,
-                                        state_dim,
-                                        act_gain,
-                                        act_dim,
-                                        rng_states,
-                                        d_g,
-                                        d_w,
-                                        d_lambda);
+    set_data<<<1 + _n_sim/SIZE, SIZE>>>(_models,
+                                        _x_i,
+                                        _x,
+                                        _u,
+                                        _e,
+                                        _n_sim,
+                                        _steps,
+                                        _state_gain,
+                                        _state_dim,
+                                        _act_gain,
+                                        _act_dim,
+                                        _rng_states,
+                                        _g,
+                                        _w,
+                                        _lambda);
     std::cout << "Done" << std::endl;
     cudaDeviceSynchronize();
 }
 
 void PointMassModel::memcpy_get_data (float* x_all, float* e) {
-    CUDA_CALL_CONST(cudaMemcpy(x_all, d_x, bytes_, cudaMemcpyDeviceToHost));
-    CUDA_CALL_CONST(cudaMemcpy(e, d_e, sizeof(float)*n_sim_*act_dim*steps_, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(x_all, _x, _bytes, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(e, _e, sizeof(float)*_n_sim*_act_dim*_steps, cudaMemcpyDeviceToHost));
     cudaDeviceSynchronize();
 }
 
@@ -456,85 +309,79 @@ void PointMassModel::get_inf (float* x,
                              float* nabla,
                              float* w) {
     // get all the info to look at the results and debug if necessary.
-    std::cout << "WTF" << std::endl;
-    CUDA_CALL_CONST(cudaMemcpy(x, d_x, sizeof(float)*(steps_+1)*n_sim_*state_dim, cudaMemcpyDeviceToHost));
-    std::cout << "WTF" << std::endl;
-    CUDA_CALL_CONST(cudaMemcpy(u, d_u, sizeof(float)*steps_*act_dim, cudaMemcpyDeviceToHost));
-    std::cout << "WTF" << std::endl;
-    CUDA_CALL_CONST(cudaMemcpy(e, d_e, sizeof(float)*n_sim_*steps_*act_dim, cudaMemcpyDeviceToHost));
-    std::cout << "WTF" << std::endl;
-    CUDA_CALL_CONST(cudaMemcpy(cost, d_cost, sizeof(float)*n_sim_, cudaMemcpyDeviceToHost));
-    std::cout << "WTF" << std::endl;
-    CUDA_CALL_CONST(cudaMemcpy(beta, d_beta, sizeof(float), cudaMemcpyDeviceToHost));
-    std::cout << "WTF" << std::endl;
-    CUDA_CALL_CONST(cudaMemcpy(nabla, d_nabla, sizeof(float), cudaMemcpyDeviceToHost));
-    std::cout << "WTF" << std::endl;
-    CUDA_CALL_CONST(cudaMemcpy(w, d_weights, sizeof(float)*n_sim_, cudaMemcpyDeviceToHost));
-    std::cout << "WTF" << std::endl;
+    CUDA_CALL_CONST(cudaMemcpy(x, _x, sizeof(float)*(_steps+1)*_n_sim*_state_dim, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(u, _u, sizeof(float)*_steps*_act_dim, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(e, _e, sizeof(float)*_n_sim*_steps*_act_dim, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(cost, _cost, sizeof(float)*_n_sim, cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(beta, _beta, sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(nabla, _nabla, sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CALL_CONST(cudaMemcpy(w, _weights, sizeof(float)*_n_sim, cudaMemcpyDeviceToHost));
 }
 
-void PointMassModel::min_beta () {
-    int _n_sim(n_sim_);
+void PointMassModel::sim () {
+    sim_gpu_kernel_<<<1 + _n_sim/SIZE, SIZE>>>(_models, _n_sim, _e, _cost, _rng_states);
+}
+
+void PointMassModel::beta () {
+    int n(_n_sim);
     // TB Size
     int BLOCK_SIZE = SIZE;
-
     // Grid Size (cut in half) (No padding)
-    int GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1;
+    int GRID_SIZE = n / BLOCK_SIZE / 2 + 1;
 
-    // THIS shouldn't change size during the controller iterations.
-    // should verify this and then allocate data in the init to improve
-    // computation time
-    //std::cout << "Find min path " << " with: "
-    //          << "GRID_SIZE: " << GRID_SIZE << ", "
-    //          << "BLOCK_SIZE: " << BLOCK_SIZE << std::endl;
-
+    float* v_r;
+    CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*GRID_SIZE));
+    CUDA_CALL_CONST(cudaMemset((void*)v_r, 0, sizeof(float)*GRID_SIZE));
 
     if (GRID_SIZE == 1)
     {
         //std::cout << "Run only once" << std::endl;
-        min_red << <1, BLOCK_SIZE >> > (d_cost, _d_beta, _n_sim);
+        min_red << <1, BLOCK_SIZE >> > (_cost, v_r, n);
     }
     else
     {
         //std::cout << "Run first" << std::endl;
         // insure at least one pass.
-        min_red << <GRID_SIZE, BLOCK_SIZE >> > (d_cost, _d_beta, _n_sim);
+        min_red << <GRID_SIZE, BLOCK_SIZE >> > (_cost, v_r, n);
 
-        _n_sim = GRID_SIZE;
-        GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
+        n = GRID_SIZE;
+        GRID_SIZE = n / BLOCK_SIZE / 2 + 1 ;
         cudaDeviceSynchronize();
         while (GRID_SIZE - 1 > 1 )
         {
             //std::cout << "Mid" << std::endl;
-            min_red << <GRID_SIZE, BLOCK_SIZE >> > (_d_beta, _d_beta, _n_sim);
-            _n_sim = GRID_SIZE;
-            GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
+            min_red << <GRID_SIZE, BLOCK_SIZE >> > (v_r, v_r, n);
+            n = GRID_SIZE;
+            GRID_SIZE = n / BLOCK_SIZE / 2 + 1 ;
             cudaDeviceSynchronize();
         }
         //std::cout << "Run last" << std::endl;
-        min_red << <1, BLOCK_SIZE >> > (_d_beta, _d_beta, _n_sim);
+        min_red << <1, BLOCK_SIZE >> > (v_r, v_r, n);
     }
 
     cudaDeviceSynchronize();
 
     //std::cout << "Copy beta: " << std::endl;
     //float h_beta[1];
-    CUDA_CALL_CONST(cudaMemcpy(d_beta, _d_beta, sizeof(float), cudaMemcpyDeviceToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_beta, v_r, sizeof(float), cudaMemcpyDeviceToDevice));
     //CUDA_CALL_CONST(cudaMemcpy(h_beta, d_beta, sizeof(float), cudaMemcpyDeviceToHost));
     //std::cout << "beta: " << h_beta[0] << std::endl;
+    CUDA_CALL_CONST(cudaFree((void*)v_r));
 }
 
 void PointMassModel::exp () {
-    exp_red <<<1 + n_sim_/SIZE, SIZE>>> (d_exp, d_cost, d_lambda, d_beta, _d_nabla, n_sim_);
+    exp_red <<<1 + _n_sim/SIZE, SIZE>>> (_exp, _cost, _lambda, _beta, _n_sim);
 }
 
 void PointMassModel::nabla () {
-    int _n_sim(n_sim_);
-    // TB Size
-    int BLOCK_SIZE = SIZE;
+    int n(_n_sim);
 
-    // Grid Size (cut in half) (No padding)
-    int GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1;
+    int BLOCK_SIZE = SIZE;
+    int GRID_SIZE = n / BLOCK_SIZE / 2 + 1;
+
+    float* v_r;
+    CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*GRID_SIZE));
+    CUDA_CALL_CONST(cudaMemset((void*)v_r, 0, sizeof(float)*GRID_SIZE));
 
     //std::cout << "Find norm term " << " with: "
     //          << "GRID_SIZE: " << GRID_SIZE << ", "
@@ -543,63 +390,63 @@ void PointMassModel::nabla () {
     if (GRID_SIZE == 1)
     {
     //    std::cout << "Run only once" << std::endl;
-        sum_red <<<1, BLOCK_SIZE >>> (d_exp, _d_nabla, _n_sim);
+        sum_red <<<1, BLOCK_SIZE >>> (_exp, v_r, n);
     }
     else
     {
     //    std::cout << "Run first" << std::endl;
         // insure at least one pass.
-        sum_red <<<GRID_SIZE, BLOCK_SIZE >>> (d_exp, _d_nabla, _n_sim);
+        sum_red <<<GRID_SIZE, BLOCK_SIZE >>> (_exp, v_r, n);
         cudaDeviceSynchronize();
 
-        _n_sim = GRID_SIZE;
-        GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
+        n = GRID_SIZE;
+        GRID_SIZE = n / BLOCK_SIZE / 2 + 1 ;
 
         while (GRID_SIZE - 1 > 1 )
         {
     //        std::cout << "Mid" << std::endl;
-            sum_red <<<GRID_SIZE, BLOCK_SIZE >>> (_d_nabla, _d_nabla, _n_sim);
-            _n_sim = GRID_SIZE;
-            GRID_SIZE = _n_sim / BLOCK_SIZE / 2 + 1 ;
+            sum_red <<<GRID_SIZE, BLOCK_SIZE >>> (v_r, v_r, n);
+            n = GRID_SIZE;
+            GRID_SIZE = n / BLOCK_SIZE / 2 + 1 ;
             cudaDeviceSynchronize();
         }
     //    std::cout << "Run last" << std::endl;
-        sum_red <<<1, BLOCK_SIZE >>> (_d_nabla, _d_nabla, _n_sim);
+        sum_red <<<1, BLOCK_SIZE >>> (v_r, v_r, n);
     }
 
     cudaDeviceSynchronize();
 
     //std::cout << "Copy nabla: " << std::endl;
     //float h_nabla[1];
-    CUDA_CALL_CONST(cudaMemcpy(d_nabla, _d_nabla, sizeof(float), cudaMemcpyDeviceToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_nabla, v_r, sizeof(float), cudaMemcpyDeviceToDevice));
     //CUDA_CALL_CONST(cudaMemcpy(h_nabla, d_nabla, sizeof(float), cudaMemcpyDeviceToHost));
     //std::cout << "nabla: " << h_nabla[0] << std::endl;
-
+    CUDA_CALL_CONST(cudaFree((void*)v_r));
 }
 
 void PointMassModel::weights () {
-    weights_kernel<<<1 + n_sim_/SIZE, SIZE>>>(d_cost, d_weights, d_lambda, d_beta, d_nabla, n_sim_);
+    weights_kernel<<<1 + _n_sim/SIZE, SIZE>>>(_cost, _weights, _lambda, _beta, _nabla, _n_sim);
     cudaDeviceSynchronize();
 }
 
 void PointMassModel::update_act () {
-    int _n_sim(n_sim_);
+    int n(_n_sim);
     int BLOCK_SIZE = SIZE;
-    int GRID_SIZE = _n_sim / BLOCK_SIZE / 2 / act_dim  + 1;
+    int GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim  + 1;
     float* v_r;
 //    std::cout << "allocate data" << std::endl;
-    CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*GRID_SIZE*act_dim));
-    CUDA_CALL_CONST(cudaMemset((void*)v_r, 0, sizeof(float)*GRID_SIZE*act_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*GRID_SIZE*_act_dim));
+    CUDA_CALL_CONST(cudaMemset((void*)v_r, 0, sizeof(float)*GRID_SIZE*_act_dim));
 //    std::cout << "Data allocated" << std::endl;
 
     // This is a problem, should parallelize this.
-    for (int t=0; t < steps_; t++)
+    for (int t=0; t < _steps; t++)
     {
         // TB Size
-        int _n_sim(n_sim_);
+        n = _n_sim;
         int BLOCK_SIZE = SIZE;
         // Grid Size (cut in half) (No padding)
-        int GRID_SIZE = _n_sim / BLOCK_SIZE / 2 / act_dim + 1;
+        int GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim + 1;
 
 
 //        std::cout << "Starting update at t: " << t << " with: "
@@ -612,7 +459,7 @@ void PointMassModel::update_act () {
             //print_u<<<1, 1>>>(v_r, GRID_SIZE, act_dim);
             //std::cout << "Run only once" << std::endl;
             //std::cout << "steps: " << STEPS << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
-            update_act_kernel <<<1, BLOCK_SIZE >>> (v_r, d_weights, d_e, STEPS, t, act_dim, _n_sim);
+            update_act_kernel <<<1, BLOCK_SIZE >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
             cudaDeviceSynchronize();
 
             //std::cout << "Only : " << t << std::endl;
@@ -625,10 +472,10 @@ void PointMassModel::update_act () {
             //std::cout << "Run first" << std::endl;
             // insure at least one pass.
             //std::cout << "steps: " << STEPS << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
-            update_act_kernel <<<GRID_SIZE, BLOCK_SIZE >>> (v_r, d_weights, d_e, STEPS, t, act_dim, _n_sim);
+            update_act_kernel <<<GRID_SIZE, BLOCK_SIZE >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
 
-            _n_sim = GRID_SIZE;
-            GRID_SIZE = _n_sim / BLOCK_SIZE / 2 / act_dim  + 1 ;
+            n = GRID_SIZE;
+            GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim  + 1 ;
             cudaDeviceSynchronize();
 
             //std::cout << "First : " << t << std::endl;
@@ -639,9 +486,9 @@ void PointMassModel::update_act () {
             while (GRID_SIZE - 1 > 1 )
             {
                 //std::cout << "Mid" << std::endl;
-                sum_red << <GRID_SIZE, BLOCK_SIZE >> > (v_r, v_r, _n_sim);
-                _n_sim = GRID_SIZE;
-                GRID_SIZE = _n_sim / BLOCK_SIZE / 2 / act_dim  + 1 ;
+                sum_red << <GRID_SIZE, BLOCK_SIZE >> > (v_r, v_r, n);
+                n = GRID_SIZE;
+                GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim  + 1 ;
                 cudaDeviceSynchronize();
 
                 /*
@@ -653,7 +500,7 @@ void PointMassModel::update_act () {
             }
             //std::cout << "Run last" << std::endl;
             //std::cout << "steps: " << STEPS << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
-            sum_red <<<1, BLOCK_SIZE >>> (v_r, v_r, _n_sim);
+            sum_red <<<1, BLOCK_SIZE >>> (v_r, v_r, n);
             cudaDeviceSynchronize();
             /*
             std::cout << "Last :" << t << std::endl;
@@ -668,34 +515,34 @@ void PointMassModel::update_act () {
         print_u<<<1, 1>>>(v_r, 1, act_dim);
         cudaDeviceSynchronize();
         */
-        copy_act<<< 1 + _n_sim/SIZE, SIZE >>>(d_u, v_r, t, act_dim);
+        copy_act<<< 1 + n/SIZE, SIZE >>>(_u, v_r, t, _act_dim);
         cudaDeviceSynchronize();
         //std::cout << "Done" << std::endl;
 
     }
 
+    CUDA_CALL_CONST(cudaFree((void*)v_r));
 
     cudaDeviceSynchronize();
-    CUDA_CALL_CONST(cudaFree((void*)v_r));
 }
 
 void PointMassModel::set_x (float* h_x) {
-    CUDA_CALL_CONST(cudaMemcpy(d_x_i, h_x, sizeof(float)*state_dim, cudaMemcpyHostToDevice));
-    set_x_kernel<<<1 + n_sim_/SIZE, SIZE>>>(d_models, d_x_i, n_sim_);
+    CUDA_CALL_CONST(cudaMemcpy(_x_i, h_x, sizeof(float)*_state_dim, cudaMemcpyHostToDevice));
+    set_x_kernel<<<1 + _n_sim/SIZE, SIZE>>>(_models, _x_i, _n_sim);
     CUDA_CALL_CONST(cudaDeviceSynchronize());
 }
 
-__global__ void sim_gpu_kernel_ (PointMassModelGpu* d_models,
-                                int n_sim_,
-                                float* d_u,
+__global__ void sim_gpu_kernel_ (PointMassModelGpu* models,
+                                int n_sim,
+                                float* u,
                                 float* cost,
                                 curandState* rng_states) {
 
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    if(tid < n_sim_){
+    if(tid < n_sim){
         /* local copy of rng state for faster generation. */
         curandState localState = rng_states[tid];
-        cost[tid] = d_models[tid].run(&localState);
+        cost[tid] = models[tid].run(&localState);
 
         /* copy back the state ohterwise the rng state is not working. */
         rng_states[tid] = localState;
@@ -706,7 +553,6 @@ __global__ void exp_red (float* out,
                          float* cost,
                          float* lambda,
                          float* beta,
-                         float* nabla,
                          int size) {
     int tid = blockDim.x*blockIdx.x + threadIdx.x;
     if(tid < size)
@@ -903,6 +749,7 @@ __global__ void set_data (PointMassModelGpu* d_models,
                             d_x_i,
                             d_u,
                             &d_e[tid*steps*act_dim],
+                            STEPS,
                             state_gain,
                             state_dim,
                             act_gain,
@@ -942,6 +789,7 @@ __global__ void shift_act (float* u, float* u_swap, int a_dim, int samples) {
 
 
 }
+
 // First implementation. Usually T << K so parallelize over K first. BOTTLENECK OF THE CODE
 // NEEDS A LOT OF INVESTIGATION
 __global__ void update_act_kernel (float* v_r,
@@ -951,9 +799,8 @@ __global__ void update_act_kernel (float* v_r,
                                   int t,
                                   int act_dim,
                                   int n) {
-    // Allocate shared memory
-    const int a_dim(act_dim);
 
+    // Allocate shared memory
     __shared__ float partial_acts[SHMEM_SIZE*2];
 
     int i = blockIdx.x * (blockDim.x*2) * act_dim + t * act_dim + threadIdx.x*steps*act_dim;
@@ -1020,104 +867,4 @@ __global__ void update_act_kernel (float* v_r,
             //printf("Id: %d, val: %f\n",blockIdx.x*act_dim + j, partial_acts[j]);
         }
     }
-}
-
-__global__ void print_x (float* x, int steps, int samples, int s_dim) {
-    int id(0);
-    for (int k = 0; k < samples; k++)
-    {
-        for (int j=0; j < steps; j++)
-        {
-            for (int i=0; i < s_dim; i++)
-            {
-                id = k*steps*s_dim + j*s_dim + i;
-                printf("x[%d]: %f ", id, x[id]);
-            }
-            printf("\n");
-        }
-        printf("\n");
-    }
-    printf("\n");
-}
-
-__global__ void print_u (float* u, int steps, int a_dim) {
-    int id(0);
-    for (int j=0; j < steps; j++)
-    {
-        for (int i=0; i < a_dim; i++)
-        {
-            id = j*a_dim + i;
-            printf("u[%d]: %f ", id, u[id]);
-        }
-        printf("\n");
-    }
-    printf("\n");
-}
-
-__global__ void print_e (float* e, int steps, int samples, int a_dim) {
-    int id(0);
-    for (int k = 0; k < samples; k++)
-    {
-        for (int j=0; j < steps; j++)
-        {
-            for (int i=0; i < a_dim; i++)
-            {
-                id = k*steps*a_dim + j*a_dim + i;
-                printf("e[%d]: %f ", id, e[id]);
-            }
-            printf("\n");
-        }
-        printf("\n");
-    }
-    printf("\n");
-}
-
-__global__ void print_beta (float* beta, int size) {
-    for (int i=0; i < size; i++)
-    {
-        printf("Beta[%d]: %f\n", i, beta[i]);
-    }
-}
-
-__global__ void print_nabla (float* nabla, int size) {
-    for (int i=0; i < size; i++)
-    {
-        printf("Nabla[%d]: %f\n", i, nabla[i]);
-    }
-}
-
-__global__ void print_lam (float* lam, int size) {
-    for (int i=0; i < size; i++)
-    {
-        printf("lambda[%d]: %f\n",i, lam[i]);
-    }
-}
-
-__global__ void print_weights (float* weights, int samples) {
-    for (int i=0; i < samples; i++)
-    {
-        printf("weights[%d]: %f\n", i, weights[i]);
-    }
-}
-
-__global__ void print_costs (float* costs, int samples) {
-    for (int i=0; i < samples; i++)
-    {
-        printf("costs[%d]: %f\n", i, costs[i]);
-    }
-}
-
-__global__ void print_exp (float* exp, int samples) {
-    for (int i=0; i<samples; i++)
-    {
-        printf("exp[%d]: %f\n", i, exp[i]);
-    }
-}
-
-__global__ void print_sum_weights (float* w, int samples) {
-    float sum(0);
-    for (int i = 0; i < samples; i++) {
-        sum += w[i];
-    }
-    printf("weight sum: %f\n", sum);
 }

@@ -43,7 +43,7 @@ include_directories(${GLEW_INCULUDE_DIRECTORIES})
 message(STATUS "GLEW path: " ${GLEW_INCULUDE_DIRECTORIES})
 
 
-add_executable(${BIN_NAME} src/main.cu src/point_mass.cu src/cost.cu src/PointMassEnv.cpp src/Env.cpp)
+add_executable(${BIN_NAME} src/main.cu src/point_mass.cu src/point_mass_gpu.cu src/mppi_utils.cu src/cost.cu src/PointMassEnv.cpp src/Env.cpp)
 
 set_property(TARGET ${BIN_NAME} PROPERTY CUDA_ARCHITECTURES 70-real)
 

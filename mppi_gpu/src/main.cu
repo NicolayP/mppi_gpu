@@ -139,7 +139,7 @@ int main(){
     std::string filename("to_plot.csv");
     PointMassEnv env = PointMassEnv(modelFile, mjkey, true);
 
-    PointMassModel* model = new PointMassModel(n, STEPS, dt, false);
+    PointMassModel* model = new PointMassModel(n, STEPS, dt, state_dim, act_dim, false);
     bool done=false;
     /*
     * The state data stored on host. In this example,

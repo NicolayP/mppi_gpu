@@ -4,6 +4,7 @@
 #include <curand.h>
 #include <curand_kernel.h>
 #include "cost.hpp"
+#include "point_mass_gpu.hpp"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -12,7 +13,7 @@
 #include <fstream>
 
 
-#define STEPS 10
+#define STEPS 20
 #define TOL 1e-6
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) {\
@@ -28,83 +29,18 @@
     exit(1);\
 }} while(0)
 
-/*
- * Simple Model Class that will be use to generate
- * Samples. Ultimatly this should be a pure virtual
- * Class with a template for the type of state and
- * for the timestep.
- */
- class PointMassModelGpu{
- public:
-     __host__ __device__ PointMassModelGpu ();
-     __host__ __device__ void init (float* x,
-                                    float* init,
-                                    float* u,
-                                    float* e,
-                                    float* x_gain,
-                                    int x_size,
-                                    float* u_gain,
-                                    int u_size,
-                                    float* w,
-                                    float* goal,
-                                    float lambda,
-                                    int id,
-                                    bool verbose=false);
-     __host__ __device__ void step (curandState* state, int t);
-     __host__ __device__ float run (curandState* state);
-     __host__ __device__ void save_e ();
-     __host__ __device__ void set_x (float* x);
-     __host__ __device__ void set_state (float* x);
-     __host__ __device__ void set_horizon (int horizon);
-     __host__ __device__ float* get_state ();
-     __host__ __device__ int get_horizon ();
 
- private:
-     // Current timestep
-     int _t;
-     // Horizon
-     int _tau;
-
-     float _dt;
-     // Action pointer.
-     float* _u;
-     // State pointer.
-     float* _x;
-
-     // LTI:
-     float* _x_gain;
-     float* _u_gain;
-     int _x_size;
-     int _u_size;
-
-     float* _g;
-     float* _w;
-
-     // local memory to e.
-     float* _e;
-     // pointer to global memory of e.
-     float* glob_e;
-
-     //sigma and its inverse.
-     float* _s;
-     float* _inv_s;
-
-     // Cost object
-     Cost _cost;
-     // contains cumulative cost.
-     float _c;
-     int _id;
-
-
-     bool _verb;
-
- };
 
  // TODO: add cudaError_t attribute to recorde the allocation
  // and execution state of the device as reported by cuda.
  class PointMassModel{
  public:
-     PointMassModel (int nb_sim, int steps, float dt, bool verbose=false);
+     PointMassModel (int nb_sim,
+                     int steps,
+                     float dt,
+                     int state_dim,
+                     int act_dim,
+                     bool verbose=false);
      ~PointMassModel ();
      void sim (float* next_act);
      void memcpy_set_data (float* x, float* u, float* goal, float* w);
@@ -117,59 +53,77 @@
                    float* beta,
                    float* nabla,
                    float* weight);
-     void exp ();
-     void min_beta ();
-     void nabla ();
-     void weights ();
-     void update_act ();
-     void update_act_id ();
      void set_x (float* x);
 
  private:
-     int n_sim_;
-     int steps_;
-     int bytes_;
+     void sim ();
+     void exp ();
+     void beta ();
+     void nabla ();
+     void weights ();
+     void update_act ();
 
-     float* d_x;
-     float* d_u;
-     float* d_u_swap;
-     float* d_e;
+     int _n_sim;
+     int _steps;
+     int _bytes;
+     /* State and action dimensions. */
+     int _state_dim;
+     int _act_dim;
 
-     // value to set up inital state vector.
-     float* d_x_i;
-     float* d_cost;
+     /* Pointer to state in global memory. */
+     float* _x;
 
-     float* d_exp;
+     /* Array to initial state.  */
+     float* _x_i;
 
-     float* d_beta;
-     float* _d_beta;
+     /* Pointer to action sequence in global memory. */
+     float* _u;
+     /* buffer used when shifting action. */
+     float* _u_swap;
 
+     /* Pointer to noise in global memory. */
+     float* _e;
 
-     float* d_nabla;
-     float* _d_nabla;
+     /* Costs array of every simulation. */
+     float* _cost;
 
+     /* Array to exponenetial of $$ -\frac{1}{\lambda} (S(\Epsilon^k) - \Beta) $$
+      * Mostly used to debug and verify solutions.
+      */
+     float* _exp;
 
-     float* d_lambda;
-     float* d_weights;
+     /* Pointer to beta, only beta[0] is filled with a value */
+     float* _beta;
 
+     /* Pointer to nabla, only nable[0] is filled with a value */
+     float* _nabla;
 
-     PointMassModelGpu* d_models;
+     /* Pointer to lambda. */
+     float* _lambda;
 
-     /* Goal vector passed to the cost function */
-     float* d_g;
-     /* Weight vector */
-     float* d_w;
-     float* h_w;
+     /* Pointer to the weights of each path. */
+     float* _weights;
 
-     float* state_gain;
-     int state_dim;
-     float* act_gain;
-     int act_dim;
+     /* Pointer to the simulations. */
+     PointMassModelGpu* _models;
 
+     /* Goal vector passed to the cost function. */
+     float* _g;
+
+     /* Weight vector for the cost function. */
+     float* _w;
+
+     /* State and action gain for LTI system. */
+     float* _state_gain;
+     float* _act_gain;
+
+     /* Timestep for integration. */
      float _dt;
 
-     curandState* rng_states;
+     /* Pointer to the random generator state. One for each simulation. */
+     curandState* _rng_states;
 
+     /* Verbosity variable. */
      bool _verb;
  };
 
@@ -177,17 +131,16 @@
  * Set of global function that the class Model will use to
  * run kernels.
  */
-__global__ void sim_gpu_kernel_ (PointMassModelGpu* d_models,
-                                 int n_,
-                                 float* d_u,
-                                 float* d_cost,
+__global__ void sim_gpu_kernel_ (PointMassModelGpu* models,
+                                 int n,
+                                 float* u,
+                                 float* cost,
                                  curandState* rng_states);
 
 __global__ void exp_red (float* out,
                          float* cost,
                          float* lambda,
                          float* beta,
-                         float* nabla,
                          int size);
 
 __global__ void min_red (float* v, float* beta, int n);
@@ -217,11 +170,11 @@ __global__ void update_act_kernel (float* u,
                                    int act_dim,
                                    int n);
 
-__global__ void set_data (PointMassModelGpu* d_models,
-                          float* d_x_i,
-                          float* d_x,
-                          float* d_u,
-                          float* d_e,
+__global__ void set_data (PointMassModelGpu* models,
+                          float* x_i,
+                          float* x,
+                          float* u,
+                          float* e,
                           int n_sim,
                           int steps,
                           float* state_gain,
@@ -235,26 +188,9 @@ __global__ void set_data (PointMassModelGpu* d_models,
 
 __global__ void shift_act (float* u, float* u_swap, int a_dim, int samples);
 
-__global__ void set_x_kernel (PointMassModelGpu* d_models, float* x_i, int n);
+__global__ void set_x_kernel (PointMassModelGpu* models, float* x_i, int n);
 
-__global__ void print_x (float* x, int steps, int samples, int s_dim);
 
-__global__ void print_u (float* u, int steps, int a_dim);
 
-__global__ void print_e (float* e, int steps, int samples, int a_dim);
-
-__global__ void print_beta (float* beta, int size);
-
-__global__ void print_nabla (float* nabla, int size);
-
-__global__ void print_lam (float* lamb, int size);
-
-__global__ void print_weights (float* weights, int samples);
-
-__global__ void print_costs (float* costs, int samples);
-
-__global__ void print_exp (float* exp, int samples);
-
-__global__ void print_sum_weights (float* w, int samples);
 
 #endif
