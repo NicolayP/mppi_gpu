@@ -68,8 +68,8 @@ __host__ __device__ void PointMassModelGpu::init (float* x,
     }
 
     for (int i = 0; i < _tau; i++){
-        _e[i*_u_size + 0] = e[i*_u_size + 0];
-        _e[i*_u_size + 1] = e[i*_u_size + 1];
+        _e[i*_u_size + 0] = glob_e[i*_u_size + 0];
+        _e[i*_u_size + 1] = glob_e[i*_u_size + 1];
     }
     _cost = Cost(_w, _x_size, _g, _x_size, lambda, _inv_s, u_size);
     _c = 0;
@@ -104,15 +104,16 @@ __host__ __device__ void PointMassModelGpu::step (curandState* state, int t) {
         _u_gain[1]*(_u[(t)*_u_size + i] + _e[(t)*_u_size + i]);
     }
     _c += _cost.step_cost(&_x[(t+1)*_x_size], &_u[(t)*_u_size], &_e[(t)*_u_size], _id, t);
-    //printf("_c[%d]: %f\n", _id, _c);
+    //printf("_c[%d][%d]: %f\n", _id, t, _c);
 }
 
 __host__ __device__ float PointMassModelGpu::run (curandState* state) {
+    _c = 0;
     for (int t = 0; t < _tau; t++ ){
         step(state, t);
     }
     _c += _cost.final_cost(&_x[(_tau-1)*_x_size], _id);
-    //printf("_c[%d, %d]: %f\n", (_tau-1), _id, _c);
+    //printf("_c[%d][%d]: %f\n", _id, (_tau-1), _c);
     // save action to global pointer
     save_e();
     return _c;

@@ -127,15 +127,12 @@ PointMassModel::~PointMassModel () {
 
 }
 
-void PointMassModel::sim (float* next_act) {
+void PointMassModel::get_act (float* next_act) {
     /* launch 1 thread per simulation. Can later consider to
      * add dimensions to the block and thread of the kernel
      * to // enven more the code inside the simulation.
      * using blockDim.y & blockDim.z, blockIdx.y & blockIdx.x
      * and threadIdx.y & threadIdx.z. */
-
-    //std::cout << "Running simulations... : " << std::flush;
-    //t1 = std::chrono::system_clock::now();
     if (_verb) {
         std::cout << "Print x before Sim" << std::endl;
         print_x<<<1, 1>>>(_x, (_steps+1), _n_sim, _state_dim);
@@ -145,31 +142,20 @@ void PointMassModel::sim (float* next_act) {
     sim();
     cudaDeviceSynchronize();
 
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-    //std::cout << "Done" << std::endl;
-
-    //std::cout << "Sim execution time: " << delta << "ms" << std::endl;
     if (_verb) {
         std::cout << "Print x after Sim" << std::endl;
         print_x<<<1, 1>>>(_x, (_steps+1), _n_sim, _state_dim);
         cudaDeviceSynchronize();
+        std::cout << "Print u" << std::endl;
+        print_u<<<1, 1>>>(_u, _steps, _act_dim);
+        cudaDeviceSynchronize();
+        std::cout << "Print e" << std::endl;
+        std::cout << _act_dim << std::endl;
+
+        print_e<<<1, 1>>>(_e, _steps, _n_sim, _act_dim);
+        cudaDeviceSynchronize();
     }
-    /*
-    std::cout << "Print u" << std::endl;
-    print_u<<<1, 1>>>(d_u, STEPS, act_dim);
-    cudaDeviceSynchronize();
-    std::cout << "Print e" << std::endl;
-    std::cout << _act_dim << std::endl;
 
-    print_e<<<1, 1>>>(_e, _steps, _n_sim, _act_dim);
-    cudaDeviceSynchronize();*/
-
-    // find min cost
-    //std::cout << "Compute min cost... : " << std::flush;
-
-    //t1 = std::chrono::system_clock::now();
 
     beta();
     if (_verb) {
@@ -177,13 +163,6 @@ void PointMassModel::sim (float* next_act) {
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-    //std::cout << "Done" << std::endl;
-    //std::cout << "Beta execution time: " << delta << "ms" << std::endl;
-    //std::cout << "Compute nabla... : " << std::flush;
-    //t1 = std::chrono::system_clock::now();
 
     exp();
     if (_verb) {
@@ -191,11 +170,6 @@ void PointMassModel::sim (float* next_act) {
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-    //std::cout << "Exp execution time: " << delta << "ms" << std::endl;
-    //t1 = std::chrono::system_clock::now();
 
     nabla();
     if (_verb) {
@@ -203,42 +177,16 @@ void PointMassModel::sim (float* next_act) {
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-    //std::cout << "Done" << std::endl;
-    //std::cout << "Nabla execution time: " << delta << "ms" << std::endl;
-    //compute weights
-    //std::cout << "Compute weights... : " << std::flush;
-    //t1 = std::chrono::system_clock::now();
-
 
     weights();
-    if (true) {
+    if (_verb) {
         print_sum_weights<<<1, 1>>>(_weights, _n_sim);
         std::cout << std::endl;
     }
     cudaDeviceSynchronize();
 
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-
-    //std::cout << "Done" << std::endl;
-
-    //std::cout << "Weights execution time: " << delta << "ms" << std::endl;
-
-    //std::cout << "compute new actions... : " << std::flush;
-
-    //t1 = std::chrono::system_clock::now();
     // CURRENT BOTTLENECK!!!
     update_act();
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-    //std::cout << "Done" << std::endl;
-    //std::cout << "Update action execution time: " << delta << "ms" << std::endl;
-    //std::cout << "send action... : " << std::flush;
 
     if (_verb) {
         print_u<<<1, 1>>>(_u, _steps, _act_dim);
@@ -246,25 +194,11 @@ void PointMassModel::sim (float* next_act) {
     }
     cudaDeviceSynchronize();
 
-    //t1 = std::chrono::system_clock::now();
     CUDA_CALL_CONST(cudaMemcpy(next_act, _u, sizeof(float)*_act_dim, cudaMemcpyDeviceToHost));
     cudaDeviceSynchronize();
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-    //std::cout << "Done" << std::endl;
-    //std::cout << "Copy act execution time: " << delta << "ms" << std::endl;
-    //std::cout << "shift and init... : " << std::flush;
 
-
-    //t1 = std::chrono::system_clock::now();
     shift_act<<<1 + _n_sim/SIZE, SIZE>>>(_u, _u_swap, _act_dim, _steps);
     CUDA_CALL_CONST(cudaMemcpy(_u, _u_swap, sizeof(float)*_act_dim*_steps, cudaMemcpyDeviceToDevice));
-    //t2 = std::chrono::system_clock::now();
-    //fp_ms = t2 - t1;
-    //delta = fp_ms.count();
-    //std::cout << "Done" << std::endl;
-    //std::cout << "Shift & Init execution time: " << delta << "ms" << std::endl;
 
     cudaDeviceSynchronize();
 
@@ -302,20 +236,31 @@ void PointMassModel::memcpy_get_data (float* x_all, float* e) {
 }
 
 void PointMassModel::get_inf (float* x,
-                             float* u,
-                             float* e,
-                             float* cost,
-                             float* beta,
-                             float* nabla,
-                             float* w) {
+                              float* u,
+                              float* e,
+                              float* cost,
+                              float* beta,
+                              float* nabla,
+                              float* w) {
     // get all the info to look at the results and debug if necessary.
+    std::cout << "Collect informations: " << std::endl;
+    //std::cout << "N " << _n_sim << " STEPS: " << _steps << " State dim: " << _state_dim << std::endl;
+    //std::cout << "X " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(x, _x, sizeof(float)*(_steps+1)*_n_sim*_state_dim, cudaMemcpyDeviceToHost));
+    //std::cout << "U " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(u, _u, sizeof(float)*_steps*_act_dim, cudaMemcpyDeviceToHost));
+    //std::cout << "E " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(e, _e, sizeof(float)*_n_sim*_steps*_act_dim, cudaMemcpyDeviceToHost));
+    //std::cout << "Cost " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(cost, _cost, sizeof(float)*_n_sim, cudaMemcpyDeviceToHost));
+    //std::cout << "Beta " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(beta, _beta, sizeof(float), cudaMemcpyDeviceToHost));
+    //std::cout << "Nabla " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(nabla, _nabla, sizeof(float), cudaMemcpyDeviceToHost));
+    //std::cout << "Weights " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(w, _weights, sizeof(float)*_n_sim, cudaMemcpyDeviceToHost));
+    cudaDeviceSynchronize();
+
 }
 
 void PointMassModel::sim () {
@@ -530,6 +475,11 @@ void PointMassModel::set_x (float* h_x) {
     CUDA_CALL_CONST(cudaMemcpy(_x_i, h_x, sizeof(float)*_state_dim, cudaMemcpyHostToDevice));
     set_x_kernel<<<1 + _n_sim/SIZE, SIZE>>>(_models, _x_i, _n_sim);
     CUDA_CALL_CONST(cudaDeviceSynchronize());
+}
+
+void PointMassModel::get_u (float* u) {
+    CUDA_CALL_CONST(cudaMemcpy(u, _u, sizeof(float)*_steps*_act_dim, cudaMemcpyDeviceToHost));
+    cudaDeviceSynchronize();
 }
 
 __global__ void sim_gpu_kernel_ (PointMassModelGpu* models,

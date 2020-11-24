@@ -56,7 +56,7 @@ __host__ __device__ float Cost::step_cost (float* x, float* u, float* e, int id,
 
 __host__ __device__ float Cost::final_cost (float* x, int id) {
     float res(0);
-    
+
     for (int i=0; i < _w_size; i++) {
         res += (x[i] - _goal[i])*_w[i]*(x[i] - _goal[i]);
     }
