@@ -38,6 +38,10 @@ include_directories(${GLFW_INCLUDE_DIRECTORIES})
 message(STATUS "GLFW path: " ${GLFW_INCULUDE_DIRECTORIES})
 
 find_package(GLEW 2.0 REQUIRED)
+find_package(PkgConfig)
+
+pkg_check_modules(YAMLCPP REQUIRED yaml-cpp>=0.5)
+include_directories(${YAMLCPP_INCLUDE_DIRS})
 
 include_directories(${GLEW_INCULUDE_DIRECTORIES})
 message(STATUS "GLEW path: " ${GLEW_INCULUDE_DIRECTORIES})
@@ -58,3 +62,5 @@ target_link_libraries(${BIN_NAME} ${LIB_MUJOCO})
 target_link_libraries(${BIN_NAME} GL GLU glut)
 
 target_link_libraries(${BIN_NAME} ${GLEW_LIBRARIES} glfw)
+
+target_link_libraries(${BIN_NAME} ${catkin_LIBRARIES}  ${YAMLCPP_LIBRARIES})

@@ -267,7 +267,16 @@ void PointMassModel::sim () {
     sim_gpu_kernel_<<<1 + _n_sim/SIZE, SIZE>>>(_models, _n_sim, _e, _cost, _rng_states);
 }
 
+/*
+void PointMassModel::beta2 () {
+
+}*/
+
 void PointMassModel::beta () {
+    // use cublas AMIN () it's a absolute value min but it's okay as we only have
+    // positive cost. Cost function can always be shited by a scalar value to be
+    // positive real function. should be in a beta2 function.
+
     int n(_n_sim);
     // TB Size
     int BLOCK_SIZE = SIZE;

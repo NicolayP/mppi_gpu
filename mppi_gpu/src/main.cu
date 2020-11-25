@@ -1,5 +1,6 @@
 #include "point_mass.hpp"
 #include "mppi_env.hpp"
+#include "mppi_utils.hpp"
 #include <iostream>
 #include <fstream>
 
@@ -10,6 +11,8 @@
 #include <chrono>
 #include <unistd.h>
 
+#include <tclap/CmdLine.h>
+#include <yaml-cpp/yaml.h>
 /*
 * Same as previous example only this time the parallized
 * objects contain a pointer to the data. This will show
@@ -24,7 +27,7 @@
 */
 
 
-void to_csv(std::string filename,
+void to_csv (std::string filename,
             float* x,
             float* u,
             int sample,
@@ -56,7 +59,7 @@ void to_csv(std::string filename,
     return;
 }
 
-void to_csv2(std::string filename,
+void to_csv2 (std::string filename,
              float* x,
              float* u,
              float* u_prev,
@@ -122,15 +125,75 @@ void to_csv2(std::string filename,
     return;
 }
 
-int main(){
-    char* modelFile = "../envs/point_mass.xml";
-    char* mjkey = "../lib/contrib/mjkey.txt";
+void parse_argument (int argc,
+                     char const* argv[],
+                     std::string& config,
+                     std::string& mjkey,
+                     std::string& outfile);
+
+void parse_config (std::string& configFile,
+                   std::string& modelFile,
+                   int& samples,
+                   int& state_dim,
+                   int& act_dim,
+                   int& horizon,
+                   float& lambda,
+                   float** noise,
+                   float** init,
+                   float** max_a);
+
+int main (int argc, char const* argv[]) {
+
+    std::string configFile;
+    std::string mjkeyFile;
+    std::string outFile;
+    std::string modelFile;
+
+    int n(0);
+    int state_dim(0);
+    int act_dim(0);
+    int steps(0);
+    float lambda;
+    float* noise;
+    float* init;
+    float* max_a;
+
+    parse_argument(argc, argv, configFile, mjkeyFile, outFile);
+
+    std::cout << "Config: " << configFile << std::endl;
+    std::cout << "MjKey: " << mjkeyFile << std::endl;
+    std::cout << "Outfile: " << outFile << std::endl;
+
+    std::cout << max_a << std::endl;
+    parse_config(configFile, modelFile, n, state_dim, act_dim, steps, lambda, &noise, &init, &max_a);
+    std::cout << max_a << std::endl;
+
+    std::cout << "Parse config output: " << modelFile << " "
+              << n << " "
+              << state_dim << " "
+              << act_dim << " "
+              << steps << " "
+              << lambda << " " << std::endl;
+    std::cout << "max_a: ";
+    for (int i = 0; i < act_dim; i++) {
+        std::cout << max_a[i] << ' ';
+    }
+    std::cout << std::endl;
+
+    for (int i = 0; i < act_dim; i++) {
+        std::cout << init[i] << ' ';
+    }
+    std::cout << std::endl;
+
+    for (int i = 0; i < act_dim; i++) {
+        std::cout << noise[i] << ' ';
+    }
+    std::cout << std::endl;
+    //char*  modelFile = "../envs/point_mass.xml";
+    //char* mjkey = "../lib/contrib/mjkey.txt";
 
 
-    std::chrono::time_point<std::chrono::system_clock> t1;
-    std::chrono::time_point<std::chrono::system_clock> t2;
-    std::chrono::duration<double, std::milli> fp_ms;
-    double delta;
+    /*
 
     int act_dim = 2;
     int state_dim = 4;
@@ -149,6 +212,8 @@ int main(){
     * array with all the following states. Thus we need a int[n]
     * array to the input data.
     */
+
+    /*
     float* h_x = (float*) malloc(sizeof(float)*n*(STEPS+1)*state_dim);
     float* h_u = (float*) malloc(sizeof(float)*STEPS*act_dim);
     float* h_e = (float*) malloc(sizeof(float)*n*STEPS*act_dim);
@@ -193,10 +258,10 @@ int main(){
     // run the multiple simulation on the device.
     while(!done){
         model->get_u(u_prev);
-        t1 = std::chrono::system_clock::now();
+        //t1 = std::chrono::system_clock::now();
         model->get_act(next_act);
-        t2 = std::chrono::system_clock::now();
-        fp_ms += t2 - t1;
+        //t2 = std::chrono::system_clock::now();
+        //fp_ms += t2 - t1;
 
         done = env.simulate(next_act);
         std::cout << "next_act: " << next_act[0] << ", " << next_act[1] << '\n';
@@ -213,10 +278,10 @@ int main(){
     // next step
 
 
-    delta = fp_ms.count();
+    //delta = fp_ms.count();
 
 
-    std::cout << "GPU execution time: " << delta << "ms" << std::endl;
+    //std::cout << "GPU execution time: " << delta << "ms" << std::endl;
 
     if(save){
         model->get_inf(h_x, h_u, h_e, cost, beta, nabla, weight);
@@ -234,4 +299,138 @@ int main(){
 
     delete model;
     cudaDeviceReset();
+
+    */
+}
+
+void parse_argument (int argc,
+                     char const* argv[],
+                     std::string& config,
+                     std::string& mjkey,
+                     std::string& outfile) {
+    try {
+
+        TCLAP::CmdLine cmd("Mppi controller", ' ', "0.0");
+        TCLAP::ValueArg<std::string> configArg("c",
+                                               "config",
+                                               "Config file",
+                                               false,
+                                               "../config/point_mass.yaml",
+                                               "string",
+                                               cmd);
+
+        TCLAP::ValueArg<std::string> mjkeyArg("k",
+                                              "key",
+                                              "Mujoco key file",
+                                              false,
+                                              "../lib/contrib/mjkey.txt",
+                                              "string",
+                                              cmd);
+
+        TCLAP::ValueArg<std::string> outArg("o",
+                                            "out",
+                                            "Outpute file",
+                                            false,
+                                            "to_plot.csv",
+                                            "string",
+                                            cmd);
+
+        cmd.parse(argc, argv);
+
+        config = configArg.getValue();
+        mjkey = mjkeyArg.getValue();
+        outfile = outArg.getValue();
+
+    } catch (TCLAP::ArgException &e) {
+        std::cerr << "error: " << e.error() << " for arg " << e.argId() << std::endl;
+    }
+}
+
+void parse_config (std::string& configFile,
+                   std::string& modelFile,
+                   int& samples,
+                   int& state_dim,
+                   int& act_dim,
+                   int& horizon,
+                   float& lambda,
+                   float** noise,
+                   float** init,
+                   float** max_a) {
+    float* tmp_noise;
+    float* tmp_init;
+    float* tmp_max_a;
+    YAML::Node config = YAML::LoadFile(configFile);
+
+    if (!config["env"])  {
+        std::cout << "Please provide a env file in the config file" << std::endl;
+        exit(1);
+    }
+    modelFile = config["env"].as<std::string>();
+
+
+    if (!config["samples"])  {
+        std::cout << "Please provide the number of samples in the config file" << std::endl;
+        exit(1);
+    }
+    samples = config["samples"].as<int>();
+
+
+    if (!config["state-dim"])  {
+        std::cout << "Please provide the state dimension in the config file" << std::endl;
+        exit(1);
+    }
+    state_dim = config["state-dim"].as<int>();
+
+
+    if (!config["action-dim"])  {
+        std::cout << "Please provide the action dimension in the config file" << std::endl;
+        exit(1);
+    }
+    act_dim = config["action-dim"].as<int>();
+
+
+    if (!config["horizon"])  {
+        std::cout << "Please provide the prediction horizon in the config file" << std::endl;
+        exit(1);
+    }
+    horizon = config["horizon"].as<int>();
+
+
+    if (!config["lambda"])  {
+        std::cout << "Please provide a env file in the config file" << std::endl;
+        exit(1);
+    }
+    lambda = config["lambda"].as<float>();
+
+
+    if (!config["noise"])  {
+        std::cout << "Please provide a noise vector in the config file, should be a array of size action-dim" << std::endl;
+        exit(1);
+    }
+    tmp_noise = (float*) malloc(sizeof(float)*act_dim);
+
+
+    if (!config["init-act"])  {
+        std::cout << "Please provide a init vector in the config file, should be a array of size action-dim" << std::endl;
+        exit(1);
+    }
+    tmp_init = (float*) malloc(sizeof(float)*act_dim);
+
+
+    if (!config["max-a"])  {
+        std::cout << "Please provide a max input vector in the config file, should be a array of size action-dim" << std::endl;
+        exit(1);
+    }
+    tmp_max_a = (float*) malloc(sizeof(float)*act_dim);
+
+    for (std::size_t i=0; i < config["max-a"].size(); i++) {
+        tmp_noise[i] = config["max-a"][i].as<float>();
+        tmp_init[i] = config["init-act"][i].as<float>();
+        tmp_max_a[i] = config["noise"][i].as<float>();
+    }
+    *noise = tmp_noise;
+    *init = tmp_init;
+    *max_a = tmp_max_a;
+    std::cout << max_a << std::endl;
+
 }

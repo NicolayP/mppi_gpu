@@ -4,6 +4,25 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <cstdio>
+#include <ctime>
+#include <chrono>
+#include <unistd.h>
+#include <iostream>
+
+
+#define CUDA_CALL(x) do { if((x) != cudaSuccess) {\
+    printf("Error at %s %d\n",__FILE__, __LINE__);\
+    return EXIT_FAILURE}} while(0)
+
+
+#define CUDA_CALL_CONST(x) do {\
+    cudaError_t err = (x);\
+    if(err != cudaSuccess) {\
+        printf("API error failed %s:%d Returned: %d\n", \
+        __FILE__, __LINE__, err);\
+    exit(1);\
+}} while(0)
 /* Set of printing function for the device. Should always run with one thread
    and one block.
  */

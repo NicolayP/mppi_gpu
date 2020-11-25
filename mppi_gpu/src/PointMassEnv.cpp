@@ -57,7 +57,7 @@ PointMassEnv::PointMassEnv(const char* modelFile, const char* mjkey, bool view) 
     mjr_makeContext(m, &con, mjFONTSCALE_100);
   }
 
-  _simend = d->time + 0.0001;
+  _simend = d->time + 0.0001+10;
 }
 
 PointMassEnv::~PointMassEnv() {

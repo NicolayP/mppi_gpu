@@ -13,21 +13,9 @@
 #include <fstream>
 
 
-#define STEPS 20
+#define STEPS 50
 #define TOL 1e-6
 
-#define CUDA_CALL(x) do { if((x) != cudaSuccess) {\
-    printf("Error at %s %d\n",__FILE__, __LINE__);\
-    return EXIT_FAILURE}} while(0)
-
-
-#define CUDA_CALL_CONST(x) do {\
-    cudaError_t err = (x);\
-    if(err != cudaSuccess) {\
-        printf("API error failed %s:%d Returned: %d\n", \
-        __FILE__, __LINE__, err);\
-    exit(1);\
-}} while(0)
 
 
 
@@ -42,7 +30,7 @@
                      int act_dim,
                      bool verbose=false);
      ~PointMassModel ();
-     void sim (float* next_act);
+     void get_act (float* next_act);
      void memcpy_set_data (float* x, float* u, float* goal, float* w);
      void get_x (float* x);
      void memcpy_get_data (float* x_all, float* e);
@@ -54,6 +42,7 @@
                    float* nabla,
                    float* weight);
      void set_x (float* x);
+     void get_u (float* u);
 
  private:
      void sim ();
