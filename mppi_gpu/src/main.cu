@@ -33,8 +33,7 @@ void to_csv (std::string filename,
             int sample,
             int size,
             int s_dim,
-            int a_dim)
-{
+            int a_dim) {
     std::cout << "Saving data to file...: " << std::flush;
     std::ofstream outfile;
     // create a name for the file output
@@ -137,188 +136,181 @@ void parse_config (std::string& config_file,
                    int& state_dim,
                    int& act_dim,
                    int& horizon,
+                   float& dt,
                    float& lambda,
                    float** noise,
                    float** init,
                    float** max_a,
+                   float** goal,
                    std::string& cost_type,
                    float** cost_q);
+
+void init_controller_var (int const& samples,
+                          int const& state_dim,
+                          int const& act_dim,
+                          int const& horizon,
+                          float** next_act,
+                          float** init_state,
+                          float** init_actions,
+                          float** cost,
+                          float** beta,
+                          float** nabla,
+                          float** weight);
+
+void free_controller_memory(float** next_act,
+                            float** init_state,
+                            float** init_actions,
+                            float** cost,
+                            float** beta,
+                            float** nabla,
+                            float** weight);
+
+void free_paresd_data(float** noise,
+                      float** init_next,
+                      float** max_a,
+                      float** goal,
+                      float** cost_q);
+
+void init_action_seq(float* init_actions, int act_dim, int steps);
+
+void verify_parse (int n,
+                   int state_dim,
+                   int act_dim,
+                   int steps,
+                   float dt,
+                   float lambda,
+                   float* noise,
+                   float* init_next,
+                   float* max_a,
+                   float* cost_q,
+                   float* goal);
 
 int main (int argc, char const* argv[]) {
 
     std::string config_file;
-    std::string mjkeyFile;
-    std::string outFile;
+    std::string mjkey_file;
+    std::string out_file;
     std::string model_file;
     std::string cost_type;
+    // will store the next action.
+    float* next_act;
 
-    int n(0);
-    int state_dim(0);
-    int act_dim(0);
-    int steps(0);
+    int n;
+    int state_dim;
+    int act_dim;
+    int steps;
+    float dt;
     float lambda;
     float* noise;
-    float* init;
+    float* init_next;
     float* max_a;
     float* cost_q;
+    float* goal;
 
-    parse_argument(argc, argv, config_file, mjkeyFile, outFile);
+    float* init_state;
+    float* init_actions;
+    float* cost;
+    float* beta;
+    float* nabla;
+    float* weight;
 
-    std::cout << "Config: " << config_file << std::endl;
-    std::cout << "MjKey: " << mjkeyFile << std::endl;
-    std::cout << "Outfile: " << outFile << std::endl;
+    bool save = true;
+    bool done=false;
 
-    std::cout << max_a << std::endl;
+
+    parse_argument(argc, argv, config_file, mjkey_file, out_file);
+
     parse_config(config_file,
                  model_file,
                  n,
                  state_dim,
                  act_dim,
                  steps,
+                 dt,
                  lambda,
                  &noise,
-                 &init,
+                 &init_next,
                  &max_a,
+                 &goal,
                  cost_type,
                  &cost_q);
-    std::cout << max_a << std::endl;
 
-    std::cout << "Parse config output: " << model_file << " "
-              << n << " "
-              << state_dim << " "
-              << act_dim << " "
-              << steps << " "
-              << lambda << " " << std::endl;
+    init_controller_var(n,
+                         state_dim,
+                         act_dim,
+                         steps,
+                         &next_act,
+                         &init_state,
+                         &init_actions,
+                         &cost,
+                         &beta,
+                         &nabla,
+                         &weight);
 
-    std::cout << "max_a: ";
-    for (int i = 0; i < act_dim; i++) {
-        std::cout << max_a[i] << ' ';
+    if (config_file == "../config/mppi-config-test.yaml") {
+        verify_parse(n,
+                 state_dim,
+                 act_dim,
+                 steps,
+                 dt,
+                 lambda,
+                 noise,
+                 init_next,
+                 max_a,
+                 cost_q,
+                 goal);
     }
-    std::cout << std::endl;
 
-    std::cout << "Init: ";
-    for (int i = 0; i < act_dim; i++) {
-        std::cout << init[i] << ' ';
-    }
-    std::cout << std::endl;
+    PointMassEnv env = PointMassEnv(model_file.c_str(), mjkey_file.c_str(), true);
 
-    std::cout << "Noise: ";
-    for (int i = 0; i < act_dim; i++) {
-        std::cout << noise[i] << ' ';
-    }
-    std::cout << std::endl;
+    PointMassModel* model = new PointMassModel(n, steps, dt, state_dim, act_dim, false);
 
-    std::cout << "Cost_q: ";
-    for (int i = 0; i < state_dim; i++) {
-        std::cout << cost_q[i] << ' ';
-    }
-    std::cout << std::endl;
+    env.get_x(init_state);
+    init_action_seq(init_actions, act_dim, steps);
 
-    //char*  model_file = "../envs/point_mass.xml";
-    //char* mjkey = "../lib/contrib/mjkey.txt";
-    std::cout << "N " << n << " STEPS: " << steps << " State dim: " << state_dim << std::endl;
-
-    float* x = (float*) malloc(sizeof(float)*state_dim);
-    float* cost = (float*) malloc(sizeof(float)*n);
-    float* beta = (float*) malloc(sizeof(float));
-    float* nabla = (float*) malloc(sizeof(float));
-    float* weight = (float*) malloc(sizeof(float)*n);
-
-    /*
-    * The state data stored on host. In this example,
-    * the state is only one scalar but is stored on a
-    * array with all the following states. Thus we need a int[n]
-    * array to the input data.
-    */
-
-    /*
-    float* h_x = (float*) malloc(sizeof(float)*n*(STEPS+1)*state_dim);
-    float* h_u = (float*) malloc(sizeof(float)*STEPS*act_dim);
-    float* h_e = (float*) malloc(sizeof(float)*n*STEPS*act_dim);
-    float* u_prev = (float*) malloc(sizeof(float)*STEPS*act_dim);
-
-    float* goal = (float*) malloc(sizeof(float)*state_dim);
-    float* w = (float*) malloc(sizeof(float)*state_dim);
-    // allocate and init and res data.
-    goal[0] = 1.0;
-    goal[1] = 0.0;
-    goal[2] = 0.0;
-    goal[3] = 0.0;
-
-    w[0] = 50.0;
-    w[1] = 50.0;
-    w[2] = 0.25;
-    w[3] = 0.25;
-
-    float dt = 0.1;
-
-    //bool test = false;
-    bool save = true;
-    std::string filename("to_plot.csv");
-    PointMassEnv env = PointMassEnv(model_file, mjkey, true);
-
-    PointMassModel* model = new PointMassModel(n, STEPS, dt, state_dim, act_dim, false);
-    bool done=false;
-
-    env.get_x(x);
-
-    for (int j=0; j < STEPS; j++){
-        h_u[(j*act_dim)+0] = 0.;
-        h_u[(j*act_dim)+1] = 0.;
-    }
-    // send the data on the device.
-
-    float* next_act = (float*) malloc(sizeof(float)*act_dim);
-
-    model->memcpy_set_data(x, h_u, goal, w);
-
+    model->memcpy_set_data(init_state, init_actions, goal, cost_q);
 
     // run the multiple simulation on the device.
+    float* u_prev = (float*) malloc(sizeof(float)*steps*act_dim);
     while(!done){
         model->get_u(u_prev);
         //t1 = std::chrono::system_clock::now();
         model->get_act(next_act);
         //t2 = std::chrono::system_clock::now();
         //fp_ms += t2 - t1;
-
         done = env.simulate(next_act);
-        std::cout << "next_act: " << next_act[0] << ", " << next_act[1] << '\n';
-        env.get_x(x);
-        model->set_x(x);
+        //std::cout << "next_act: " << next_act[0] << ", " << next_act[1] << '\n';
+        env.get_x(init_state);
+        model->set_x(init_state);
     }
-
-    //send act to sim;
-
-    // collect new state;
-
-    // set state in controller;
-
-    // next step
-
-
-    //delta = fp_ms.count();
-
-
-    //std::cout << "GPU execution time: " << delta << "ms" << std::endl;
 
     if(save){
+        float* h_x = (float*) malloc(sizeof(float)*n*(steps+1)*state_dim);
+        float* h_u = (float*) malloc(sizeof(float)*steps*act_dim);
+        float* h_e = (float*) malloc(sizeof(float)*n*steps*act_dim);
+        float* u_prev = (float*) malloc(sizeof(float)*steps*act_dim);
+
         model->get_inf(h_x, h_u, h_e, cost, beta, nabla, weight);
-        to_csv2(filename, h_x, h_u, u_prev, h_e, cost, beta, nabla, weight, n, STEPS, state_dim, act_dim);
+        to_csv2(out_file, h_x, h_u, u_prev, h_e, cost, beta, nabla, weight, n, steps, state_dim, act_dim);
+        free(h_x);
+        free(h_u);
+        free(h_e);
     }
+    free(u_prev);
 
     std::cout << "Freeing memory... : " << std::flush;
-    free(h_x);
-    free(h_u);
-    free(h_e);
-    free(x);
-    free(w);
-    free(goal);
+    free_controller_memory(&next_act,
+                           &init_state,
+                           &init_actions,
+                           &cost,
+                           &beta,
+                           &nabla,
+                           &weight);
+    free_paresd_data(&noise, &init_next, &max_a, &goal, &cost_q);
+    delete model;
     std::cout << "Done" << std::endl;
 
-    delete model;
     cudaDeviceReset();
-
-    */
 }
 
 void parse_argument (int argc,
@@ -359,6 +351,8 @@ void parse_argument (int argc,
         mjkey = mjkeyArg.getValue();
         outfile = outArg.getValue();
 
+        std::cout << "Argument parsed" << std::endl;
+
     } catch (TCLAP::ArgException &e) {
         std::cerr << "error: " << e.error() << " for arg " << e.argId() << std::endl;
     }
@@ -370,15 +364,18 @@ void parse_config (std::string& config_file,
                    int& state_dim,
                    int& act_dim,
                    int& horizon,
+                   float& dt,
                    float& lambda,
                    float** noise,
                    float** init,
                    float** max_a,
+                   float** goal,
                    std::string& cost_type,
                    float** cost_q) {
     float* tmp_noise;
     float* tmp_init;
     float* tmp_max_a;
+    float* tmp_goal;
     float* tmp_cost_q;
 
     YAML::Node config = YAML::LoadFile(config_file);
@@ -418,6 +415,13 @@ void parse_config (std::string& config_file,
     }
     horizon = config["horizon"].as<int>();
 
+    /* Timestep section */
+    if (!config["dt"])  {
+        std::cout << "Please provide the time step in the config file" << std::endl;
+        exit(1);
+    }
+    dt = config["dt"].as<float>();
+
     /* Lambda section */
     if (!config["lambda"])  {
         std::cout << "Please provide a env file in the config file" << std::endl;
@@ -434,7 +438,7 @@ void parse_config (std::string& config_file,
         if (config["noise"].size() != act_dim) {
             std::cout << "Warning: the cost function weights matrix is larger than the action dimension ";
         }
-        tmp_noise = (float*) malloc(sizeof(float)*config["max-a"].size());
+        tmp_noise = (float*) malloc(sizeof(float)*config["noise"].size());
     }
 
 
@@ -462,12 +466,29 @@ void parse_config (std::string& config_file,
         }
         tmp_max_a = (float*) malloc(sizeof(float)*config["max-a"].size());
     }
+
+
     for (std::size_t i=0; i < config["max-a"].size(); i++) {
-        tmp_noise[i] = config["max-a"][i].as<float>();
+        tmp_noise[i] = config["noise"][i].as<float>();
         tmp_init[i] = config["init-act"][i].as<float>();
-        tmp_max_a[i] = config["noise"][i].as<float>();
+        tmp_max_a[i] = config["max-a"][i].as<float>();
     }
 
+    /* Goal section */
+    {
+        if (!config["goal"])  {
+            std::cout << "Please provide a goal vector in the config file, should be a array of size action-dim" << std::endl;
+            exit(1);
+        }
+        if (config["goal"].size() != state_dim) {
+            std::cout << "Warning: the goal size is different than the state dimension " << std::endl;
+        }
+        tmp_goal = (float*) malloc(sizeof(float)*config["goal"].size());
+
+        for (std::size_t i=0; i < config["goal"].size(); i++) {
+            tmp_goal[i] = config["goal"][i].as<float>();
+        }
+    }
 
     /* Cost related section  */
     {
@@ -499,12 +520,112 @@ void parse_config (std::string& config_file,
     *noise = tmp_noise;
     *init = tmp_init;
     *max_a = tmp_max_a;
+    *goal = tmp_goal;
     *cost_q = tmp_cost_q;
 
     tmp_noise = nullptr;
     tmp_init = nullptr;
     tmp_max_a = nullptr;
     tmp_cost_q = nullptr;
+    tmp_goal = nullptr;
+
+    std::cout << "N " << samples << " STEPS: " << horizon << " State dim: " << state_dim << std::endl;
+
+}
+
+void init_controller_var (int const& samples,
+                          int const& state_dim,
+                          int const& act_dim,
+                          int const& horizon,
+                          float** next_act,
+                          float** init_state,
+                          float** init_actions,
+                          float** cost,
+                          float** beta,
+                          float** nabla,
+                          float** weight) {
+      *next_act = (float*) malloc(sizeof(float)*act_dim);
+      *init_state = (float*) malloc(sizeof(float)*state_dim);
+      *init_actions = (float*) malloc(sizeof(float)*horizon*act_dim);
+      *cost = (float*) malloc(sizeof(float)*samples);
+      *beta = (float*) malloc(sizeof(float));
+      *nabla = (float*) malloc(sizeof(float));
+      *weight = (float*) malloc(sizeof(float)*samples);
+}
+
+void free_controller_memory(float** next_act,
+                            float** init_state,
+                            float** init_actions,
+                            float** cost,
+                            float** beta,
+                            float** nabla,
+                            float** weight) {
+    free(*next_act);
+    free(*init_state);
+    free(*init_actions);
+    free(*cost);
+    free(*beta);
+    free(*nabla);
+    free(*weight);
+}
+
+void free_paresd_data(float** noise,
+                      float** init_next,
+                      float** max_a,
+                      float** goal,
+                      float** cost_q) {
+    free(*noise);
+    free(*init_next);
+    free(*max_a);
+    free(*goal);
+    free(*cost_q);
+}
+
+void init_action_seq(float* init_actions, int action_dim, int steps) {
+    for (int i=0; i < steps; i++) {
+        for( int j=0; j < action_dim; j++) {
+            init_actions[i*action_dim + j] = 0.;
+        }
+    }
+}
+
+void verify_parse (int n,
+                   int state_dim,
+                   int act_dim,
+                   int steps,
+                   float dt,
+                   float lambda,
+                   float* noise,
+                   float* init_next,
+                   float* max_a,
+                   float* cost_q,
+                   float* goal) {
+    assert(n == 3);
+    assert(state_dim == 4);
+    assert(act_dim == 2);
+    assert(steps == 12);
+
+    assert(fabs(dt - 0.1) < TOL);
+    assert(fabs(lambda - 1.5) < TOL);
+    assert(fabs(max_a[0] - 1.2) < TOL);
+    assert(fabs(max_a[1] - 1.3) < TOL);
+
+    assert(fabs(noise[0] - 0.24) < TOL);
+    assert(fabs(noise[1] - 0.26) < TOL);
 
 
+    assert(fabs(init_next[0] - 0.1) < TOL);
+    assert(fabs(init_next[1] - 0.2) < TOL);
+
+    assert(fabs(cost_q[0] - 1) < TOL);
+    assert(fabs(cost_q[1] - 2) < TOL);
+    assert(fabs(cost_q[2] - 0.5) < TOL);
+    assert(fabs(cost_q[3] - 0.75) < TOL);
+
+    assert(fabs(goal[0] - 1) < TOL);
+    assert(fabs(goal[1] - 2) < TOL);
+    assert(fabs(goal[2] - 3) < TOL);
+    assert(fabs(goal[3] - 4) < TOL);
+
+    std::cout << "Test passed" << std::endl;
 }
