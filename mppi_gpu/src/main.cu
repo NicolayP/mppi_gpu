@@ -131,8 +131,8 @@ void parse_argument (int argc,
                      std::string& mjkey,
                      std::string& outfile);
 
-void parse_config (std::string& configFile,
-                   std::string& modelFile,
+void parse_config (std::string& config_file,
+                   std::string& model_file,
                    int& samples,
                    int& state_dim,
                    int& act_dim,
@@ -140,14 +140,17 @@ void parse_config (std::string& configFile,
                    float& lambda,
                    float** noise,
                    float** init,
-                   float** max_a);
+                   float** max_a,
+                   std::string& cost_type,
+                   float** cost_q);
 
 int main (int argc, char const* argv[]) {
 
-    std::string configFile;
+    std::string config_file;
     std::string mjkeyFile;
     std::string outFile;
-    std::string modelFile;
+    std::string model_file;
+    std::string cost_type;
 
     int n(0);
     int state_dim(0);
@@ -157,48 +160,63 @@ int main (int argc, char const* argv[]) {
     float* noise;
     float* init;
     float* max_a;
+    float* cost_q;
 
-    parse_argument(argc, argv, configFile, mjkeyFile, outFile);
+    parse_argument(argc, argv, config_file, mjkeyFile, outFile);
 
-    std::cout << "Config: " << configFile << std::endl;
+    std::cout << "Config: " << config_file << std::endl;
     std::cout << "MjKey: " << mjkeyFile << std::endl;
     std::cout << "Outfile: " << outFile << std::endl;
 
     std::cout << max_a << std::endl;
-    parse_config(configFile, modelFile, n, state_dim, act_dim, steps, lambda, &noise, &init, &max_a);
+    parse_config(config_file,
+                 model_file,
+                 n,
+                 state_dim,
+                 act_dim,
+                 steps,
+                 lambda,
+                 &noise,
+                 &init,
+                 &max_a,
+                 cost_type,
+                 &cost_q);
     std::cout << max_a << std::endl;
 
-    std::cout << "Parse config output: " << modelFile << " "
+    std::cout << "Parse config output: " << model_file << " "
               << n << " "
               << state_dim << " "
               << act_dim << " "
               << steps << " "
               << lambda << " " << std::endl;
+
     std::cout << "max_a: ";
     for (int i = 0; i < act_dim; i++) {
         std::cout << max_a[i] << ' ';
     }
     std::cout << std::endl;
 
+    std::cout << "Init: ";
     for (int i = 0; i < act_dim; i++) {
         std::cout << init[i] << ' ';
     }
     std::cout << std::endl;
 
+    std::cout << "Noise: ";
     for (int i = 0; i < act_dim; i++) {
         std::cout << noise[i] << ' ';
     }
     std::cout << std::endl;
-    //char*  modelFile = "../envs/point_mass.xml";
+
+    std::cout << "Cost_q: ";
+    for (int i = 0; i < state_dim; i++) {
+        std::cout << cost_q[i] << ' ';
+    }
+    std::cout << std::endl;
+
+    //char*  model_file = "../envs/point_mass.xml";
     //char* mjkey = "../lib/contrib/mjkey.txt";
-
-
-    /*
-
-    int act_dim = 2;
-    int state_dim = 4;
-    int n = 3000;
-    //std::cout << "N " << n << " STEPS: " << STEPS << " State dim: " << state_dim << std::endl;
+    std::cout << "N " << n << " STEPS: " << steps << " State dim: " << state_dim << std::endl;
 
     float* x = (float*) malloc(sizeof(float)*state_dim);
     float* cost = (float*) malloc(sizeof(float)*n);
@@ -237,7 +255,7 @@ int main (int argc, char const* argv[]) {
     //bool test = false;
     bool save = true;
     std::string filename("to_plot.csv");
-    PointMassEnv env = PointMassEnv(modelFile, mjkey, true);
+    PointMassEnv env = PointMassEnv(model_file, mjkey, true);
 
     PointMassModel* model = new PointMassModel(n, STEPS, dt, state_dim, act_dim, false);
     bool done=false;
@@ -346,8 +364,8 @@ void parse_argument (int argc,
     }
 }
 
-void parse_config (std::string& configFile,
-                   std::string& modelFile,
+void parse_config (std::string& config_file,
+                   std::string& model_file,
                    int& samples,
                    int& state_dim,
                    int& act_dim,
@@ -355,82 +373,138 @@ void parse_config (std::string& configFile,
                    float& lambda,
                    float** noise,
                    float** init,
-                   float** max_a) {
+                   float** max_a,
+                   std::string& cost_type,
+                   float** cost_q) {
     float* tmp_noise;
     float* tmp_init;
     float* tmp_max_a;
-    YAML::Node config = YAML::LoadFile(configFile);
+    float* tmp_cost_q;
 
+    YAML::Node config = YAML::LoadFile(config_file);
+
+    /* env section */
     if (!config["env"])  {
         std::cout << "Please provide a env file in the config file" << std::endl;
         exit(1);
     }
-    modelFile = config["env"].as<std::string>();
+    model_file = config["env"].as<std::string>();
 
-
+    /* Sample section */
     if (!config["samples"])  {
         std::cout << "Please provide the number of samples in the config file" << std::endl;
         exit(1);
     }
     samples = config["samples"].as<int>();
 
-
+    /* State section */
     if (!config["state-dim"])  {
         std::cout << "Please provide the state dimension in the config file" << std::endl;
         exit(1);
     }
     state_dim = config["state-dim"].as<int>();
 
-
+    /* Action section */
     if (!config["action-dim"])  {
         std::cout << "Please provide the action dimension in the config file" << std::endl;
         exit(1);
     }
     act_dim = config["action-dim"].as<int>();
 
-
+    /* Horizon section */
     if (!config["horizon"])  {
         std::cout << "Please provide the prediction horizon in the config file" << std::endl;
         exit(1);
     }
     horizon = config["horizon"].as<int>();
 
-
+    /* Lambda section */
     if (!config["lambda"])  {
         std::cout << "Please provide a env file in the config file" << std::endl;
         exit(1);
     }
     lambda = config["lambda"].as<float>();
 
-
-    if (!config["noise"])  {
-        std::cout << "Please provide a noise vector in the config file, should be a array of size action-dim" << std::endl;
-        exit(1);
+    /* Noise section */
+    {
+        if (!config["noise"])  {
+            std::cout << "Please provide a noise vector in the config file, should be a array of size action-dim" << std::endl;
+            exit(1);
+        }
+        if (config["noise"].size() != act_dim) {
+            std::cout << "Warning: the cost function weights matrix is larger than the action dimension ";
+        }
+        tmp_noise = (float*) malloc(sizeof(float)*config["max-a"].size());
     }
-    tmp_noise = (float*) malloc(sizeof(float)*act_dim);
 
 
-    if (!config["init-act"])  {
-        std::cout << "Please provide a init vector in the config file, should be a array of size action-dim" << std::endl;
-        exit(1);
+    /* Init action section */
+    {
+        if (!config["init-act"])  {
+            std::cout << "Please provide a init vector in the config file, should be a array of size action-dim" << std::endl;
+            exit(1);
+        }
+        if (config["init-act"].size() != act_dim) {
+            std::cout << "Warning: the cost function weights matrix is larger than the action dimension ";
+        }
+        tmp_init = (float*) malloc(sizeof(float)*config["max-a"].size());
     }
-    tmp_init = (float*) malloc(sizeof(float)*act_dim);
 
 
-    if (!config["max-a"])  {
-        std::cout << "Please provide a max input vector in the config file, should be a array of size action-dim" << std::endl;
-        exit(1);
+    /* Max action section */
+    {
+        if (!config["max-a"])  {
+            std::cout << "Please provide a max input vector in the config file, should be a array of size action-dim" << std::endl;
+            exit(1);
+        }
+        if (config["max-a"].size() != act_dim) {
+            std::cout << "Warning: the input limit is different than the action dimension " << std::endl;
+        }
+        tmp_max_a = (float*) malloc(sizeof(float)*config["max-a"].size());
     }
-    tmp_max_a = (float*) malloc(sizeof(float)*act_dim);
-
     for (std::size_t i=0; i < config["max-a"].size(); i++) {
         tmp_noise[i] = config["max-a"][i].as<float>();
         tmp_init[i] = config["init-act"][i].as<float>();
         tmp_max_a[i] = config["noise"][i].as<float>();
     }
+
+
+    /* Cost related section  */
+    {
+        if (!config["cost"])  {
+            std::cout << "Please provide cost function in the config file." << std::endl;
+            exit(1);
+        }
+
+        if (!config["cost"]["type"]) {
+            std::cout << "Please provide cost function type in the config file. Currently supported: quadratic " << std::endl;
+            exit(1);
+        }
+        cost_type = config["cost"]["type"].as<std::string>();
+
+        if (!config["cost"]["w"]) {
+            std::cout << "Please provide cost function type in the config file. Currently supported: quadratic " << std::endl;
+            exit(1);
+        }
+        if (config["cost"]["w"].size() != state_dim) {
+            std::cout << "Warning: the cost function weights matrix is different than the state dimension " << std::endl;
+        }
+        tmp_cost_q = (float*) malloc(sizeof(float)*config["cost"]["w"].size());
+
+        for (std::size_t i=0; i< config["cost"]["w"].size(); i++) {
+            tmp_cost_q[i] = config["cost"]["w"][i].as<float>();
+        }
+    }
+
     *noise = tmp_noise;
     *init = tmp_init;
     *max_a = tmp_max_a;
-    std::cout << max_a << std::endl;
+    *cost_q = tmp_cost_q;
+
+    tmp_noise = nullptr;
+    tmp_init = nullptr;
+    tmp_max_a = nullptr;
+    tmp_cost_q = nullptr;
+
 
 }

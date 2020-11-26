@@ -1,0 +1,23 @@
+---
+    env: "../envs/point_mass.xml"
+    samples: 3000
+    state-dim: 4
+    action-dim: 2
+    horizon: 50
+    lambda: 1
+    noise:
+        - 0.25
+        - 0.25
+    init-act:
+        - 0.0
+        - 0.0
+    max-a:
+        - 1
+        - 1
+    cost:
+        type: "quadratic"
+        w:
+            - 1
+            - 1
+            - 0.5
+            - 0.5
