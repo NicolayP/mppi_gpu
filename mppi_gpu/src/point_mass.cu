@@ -187,7 +187,6 @@ void PointMassModel::get_act (float* next_act) {
 
     // CURRENT BOTTLENECK!!!
     update_act();
-
     if (_verb) {
         print_u<<<1, 1>>>(_u, _steps, _act_dim);
         std::cout << std::endl;
@@ -244,7 +243,7 @@ void PointMassModel::get_inf (float* x,
                               float* w) {
     // get all the info to look at the results and debug if necessary.
     std::cout << "Collect informations: " << std::endl;
-    //std::cout << "N " << _n_sim << " STEPS: " << _steps << " State dim: " << _state_dim << std::endl;
+    //std::cout << "n " << _n_sim << " steps: " << _steps << " State dim: " << _state_dim << std::endl;
     //std::cout << "X " << std::endl;
     CUDA_CALL_CONST(cudaMemcpy(x, _x, sizeof(float)*(_steps+1)*_n_sim*_state_dim, cudaMemcpyDeviceToHost));
     //std::cout << "U " << std::endl;
@@ -386,7 +385,8 @@ void PointMassModel::weights () {
 void PointMassModel::update_act () {
     int n(_n_sim);
     int BLOCK_SIZE = SIZE;
-    int GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim  + 1;
+    int GRID_SIZE = n / ( BLOCK_SIZE * _act_dim )  + 1 ;
+    //std::cout << GRID_SIZE << std::endl;
     float* v_r;
 //    std::cout << "allocate data" << std::endl;
     CUDA_CALL_CONST(cudaMalloc((void**)&v_r, sizeof(float)*GRID_SIZE*_act_dim));
@@ -400,7 +400,7 @@ void PointMassModel::update_act () {
         n = _n_sim;
         int BLOCK_SIZE = SIZE;
         // Grid Size (cut in half) (No padding)
-        int GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim + 1;
+        int GRID_SIZE = n / ( BLOCK_SIZE * _act_dim )  + 1 ;
 
 
 //        std::cout << "Starting update at t: " << t << " with: "
@@ -408,11 +408,11 @@ void PointMassModel::update_act () {
 //                  << "BLOCK_SIZE: " << BLOCK_SIZE << std::endl;
         if (GRID_SIZE == 1)
         {
-            //print_e<<<1, 1>>>(d_e, STEPS, _n_sim, act_dim);
+            //print_e<<<1, 1>>>(d_e, _steps, _n_sim, act_dim);
             //std::cout << "Only before : " << t << std::endl;
             //print_u<<<1, 1>>>(v_r, GRID_SIZE, act_dim);
             //std::cout << "Run only once" << std::endl;
-            //std::cout << "steps: " << STEPS << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
+            //std::cout << "steps: " << _steps << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
             update_act_kernel <<<1, BLOCK_SIZE >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
             cudaDeviceSynchronize();
 
@@ -423,26 +423,26 @@ void PointMassModel::update_act () {
         }
         else
         {
-            //std::cout << "Run first" << std::endl;
+            //std::cout << "Run first, GRID_SIZE: " << GRID_SIZE << std::endl;
             // insure at least one pass.
-            //std::cout << "steps: " << STEPS << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
+            //std::cout << "steps: " << _steps << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
             update_act_kernel <<<GRID_SIZE, BLOCK_SIZE >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
 
             n = GRID_SIZE;
-            GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim  + 1 ;
+            GRID_SIZE = n / ( BLOCK_SIZE * _act_dim )  + 1 ;
             cudaDeviceSynchronize();
 
-            //std::cout << "First : " << t << std::endl;
+            //std::cout << "First : " << t << " New grid: " << GRID_SIZE << std::endl;
             //print_u<<<1, 1>>>(v_r, GRID_SIZE, act_dim);
             //cudaDeviceSynchronize();
 
 
-            while (GRID_SIZE - 1 > 1 )
+            while (GRID_SIZE > 1 )
             {
                 //std::cout << "Mid" << std::endl;
-                sum_red << <GRID_SIZE, BLOCK_SIZE >> > (v_r, v_r, n);
+                sum_red_adim << <GRID_SIZE, BLOCK_SIZE >> > (v_r, v_r, n, _act_dim);
                 n = GRID_SIZE;
-                GRID_SIZE = n / BLOCK_SIZE / 2 / _act_dim  + 1 ;
+                GRID_SIZE = n / ( BLOCK_SIZE * 2 )  + 1 ;
                 cudaDeviceSynchronize();
 
                 /*
@@ -453,8 +453,8 @@ void PointMassModel::update_act () {
 
             }
             //std::cout << "Run last" << std::endl;
-            //std::cout << "steps: " << STEPS << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
-            sum_red <<<1, BLOCK_SIZE >>> (v_r, v_r, n);
+            //std::cout << "steps: " << _steps << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
+            sum_red_adim <<<1, BLOCK_SIZE >>> (v_r, v_r, n, _act_dim);
             cudaDeviceSynchronize();
             /*
             std::cout << "Last :" << t << std::endl;
@@ -666,6 +666,81 @@ __global__ void sum_red (float* v, float* v_r, int n) {
     }
 }
 
+__global__ void sum_red_adim (float* v, float* v_r, int n, int act_dim) {
+    __shared__ float partial_sum[SHMEM_SIZE*2];
+
+    int i = blockIdx.x * (blockDim.x * 2) * act_dim + threadIdx.x * act_dim;
+    int shift = blockDim.x*act_dim;
+
+    if (i + shift < n*act_dim)
+    {
+        for (int j = 0; j < act_dim; j++) {
+            partial_sum[threadIdx.x*act_dim + j] = v[i + j] + v[i + shift + j];
+            /*printf("double: i: %d, p_a[%d]: %f, v[%d]: %f, v[%d]: %f\n",
+                    i,
+                    threadIdx.x*act_dim + j,
+                    partial_sum[threadIdx.x*act_dim + j],
+                    i+j,
+                    v[i + j],
+                    i+shift+j,
+                    v[i + shift + j]);*/
+        }
+    }
+    else if (i < n*act_dim)
+    {
+        for (int j = 0; j < act_dim; j++) {
+            partial_sum[threadIdx.x*act_dim + j] = v[i + j];
+            /*printf("single: i: %d, p_a[%d]: %f, v[%d]: %f\n",
+                   i,
+                   threadIdx.x*act_dim + j,
+                   partial_sum[threadIdx.x*act_dim + j],
+                   i+j,
+                   v[i + j]);*/
+        }
+    }
+    else
+    {
+        for (int j = 0; j < act_dim; j++)
+        {
+            partial_sum[threadIdx.x*act_dim + j] = 0;
+        }
+    }
+    __syncthreads();
+
+    for (int s = blockDim.x*act_dim / 2; s > 1; s >>= 1) {
+        if (threadIdx.x*act_dim  < s)
+        {
+            for (int j = 0; j < act_dim; j++)
+            {
+                partial_sum[threadIdx.x*act_dim + j] += partial_sum[threadIdx.x*act_dim + j + s];
+                /*printf("Middle: i %d, p_a[%d]: %f, p_a[%d]: %f\n",
+                        i,
+                        threadIdx.x*act_dim + j,
+                        partial_sum[threadIdx.x*act_dim + j],
+                        threadIdx.x*act_dim + j + s,
+                        partial_sum[threadIdx.x*act_dim + j + s]);*/
+            }
+        }
+        __syncthreads();
+    }
+
+    // Let the thread 0 for this block write it's result to main memory
+    // Result is inexed by this block
+    if (threadIdx.x == 0)
+    {
+        for(int j = 0; j < act_dim; j++)
+        {
+            v_r[blockIdx.x*act_dim + j] = partial_sum[j];
+            /*printf("Final: i %d, v[%d]: %f, p_a[%d]: %f\n",
+                    i,
+                    blockIdx.x*act_dim + j,
+                    v_r[blockIdx.x*act_dim + j],
+                    j,
+                    partial_sum[j]);*/
+        }
+    }
+}
+
 __global__ void weights_kernel (float* v,
                                 float* v_r,
                                 float* lambda_1,
@@ -708,7 +783,7 @@ __global__ void set_data (PointMassModelGpu* d_models,
                             d_x_i,
                             d_u,
                             &d_e[tid*steps*act_dim],
-                            STEPS,
+                            steps,
                             state_gain,
                             state_dim,
                             act_gain,
@@ -759,13 +834,15 @@ __global__ void update_act_kernel (float* v_r,
                                   int act_dim,
                                   int n) {
 
-    // Allocate shared memory
+    // Allocate shared memory * 2 for the action dim
     __shared__ float partial_acts[SHMEM_SIZE*2];
 
-    int i = blockIdx.x * (blockDim.x*2) * act_dim + t * act_dim + threadIdx.x*steps*act_dim;
-    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.x * (blockDim.x*2) * act_dim * steps + t * act_dim + threadIdx.x*steps*act_dim;
     int shift = blockDim.x*steps*act_dim;
+    int k_shift = blockDim.x;
+    int k = blockIdx.x * blockDim.x + threadIdx.x + k_shift*blockIdx.x;
     int max_size = n*act_dim*steps;
+
     /*
      * If the array is long enough, one thread can compute two elements
      * of the output array at the time
@@ -775,9 +852,19 @@ __global__ void update_act_kernel (float* v_r,
         for (int j = 0; j < act_dim; j++)
         {
             partial_acts[threadIdx.x*act_dim + j] = w[k]*e[i + j] +
-                                                    w[k]*e[i + blockDim.x*steps*act_dim + j];
-            //printf("e[%d]: %f\n", i+j, e[i+j]);
-            //printf("e[%d]: %f\n", i+ blockDim.x*steps*act_dim +j, e[i+blockDim.x*steps*act_dim+j]);
+                                                    w[k+k_shift]*e[i + shift + j];
+            /*printf("double: i: %d, p_a[%d]: %f, w[%d]: %f, e[%d]: %f, w[%d]: %f, e[%d]: %f\n",
+                    i,
+                    threadIdx.x*act_dim + j,
+                    partial_acts[threadIdx.x*act_dim + j],
+                    k,
+                    w[k],
+                    i+j,
+                    e[i+j],
+                    k+k_shift,
+                    w[k+k_shift],
+                    i+shift+j,
+                    e[i + shift + j]);*/
         }
     }
     /*
@@ -788,7 +875,11 @@ __global__ void update_act_kernel (float* v_r,
         for (int j = 0; j < act_dim; j++)
         {
             partial_acts[threadIdx.x*act_dim + j] = w[k]*e[i + j];
-            //printf("e[%d]: %f, w[%d]: %f\n", i+j, e[i+j], k, w[k]);
+            /*printf("single: i: %d, p_a[%d], w[%d], e[%d]\n",
+                   i,
+                   threadIdx.x*act_dim + j,
+                   k,
+                   i+j);*/
         }
     }
     else
@@ -798,18 +889,21 @@ __global__ void update_act_kernel (float* v_r,
             partial_acts[threadIdx.x*act_dim + j] = 0;
         }
     }
-    //partial_sum[threadIdx.x] = v[i] + v[i + blockDim.x];
     __syncthreads();
 
-    // Start at 1/2 block stride and divide by two each iteration
     for (int s = blockDim.x * act_dim / 2; s > 1; s >>= 1)
     {
-        // Each thread does work unless it is further than the stride
         if (threadIdx.x*act_dim  < s)
         {
             for (int j = 0; j < act_dim; j++)
             {
                 partial_acts[threadIdx.x*act_dim + j] += partial_acts[threadIdx.x*act_dim + j + s];
+                /*printf("Middle: i %d, p_a[%d]: %f, p_a[%d]: %f\n",
+                        i,
+                        threadIdx.x*act_dim + j,
+                        partial_acts[threadIdx.x*act_dim + j],
+                        threadIdx.x*act_dim + j + s,
+                        partial_acts[threadIdx.x*act_dim + j + s]);*/
             }
         }
         __syncthreads();
@@ -819,11 +913,15 @@ __global__ void update_act_kernel (float* v_r,
     // Result is inexed by this block
     if (threadIdx.x == 0)
     {
-        //printf("FUCK YOU CUNT");
         for(int j = 0; j < act_dim; j++)
         {
             v_r[blockIdx.x*act_dim + j] = partial_acts[j];
-            //printf("Id: %d, val: %f\n",blockIdx.x*act_dim + j, partial_acts[j]);
+            /*printf("Final: i %d, v[%d]: %f, p_a[%d]: %f\n",
+                    i,
+                    blockIdx.x*act_dim + j,
+                    v_r[blockIdx.x*act_dim + j],
+                    j,
+                    partial_acts[j]);*/
         }
     }
 }

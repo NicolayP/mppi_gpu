@@ -44,9 +44,6 @@ public:
     __host__ __device__ int get_horizon ();
 
 private:
-    // Current timestep
-    int _t;
-
     /* Time horizon */
     int _tau;
 

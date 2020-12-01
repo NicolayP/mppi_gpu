@@ -26,6 +26,32 @@
 * on the host device.
 */
 
+void to_csv_traj (std::string filename,
+                  std::vector<std::vector<float>> x,
+                  std::vector<std::vector<float>> u) {
+    std::ofstream outfile;
+
+    outfile.open(filename);
+    std::cout << "Saving traj to file...: " << std::endl;
+
+    outfile << "x" << "," << "y" << "," << "vx" << "," << "vy" << ","
+            << "ux" << "," << "uy" << ',' << "size_x" << "," << "size_u"<< std::endl;
+
+    outfile << x[0][0] << "," << x[0][1] << ","
+            << x[0][2] << "," << x[0][3] << ","
+            << u[0][0] << "," << u[0][1] << ","
+            << x.size() << "," << u.size() << std::endl;
+    for (int i = 1; i < u.size(); i++) {
+        outfile << x[i][0] << "," << x[i][1] << ","
+                << x[i][2] << "," << x[i][3] << ","
+                << u[i][0] << "," << u[i][1] << std::endl;
+    }
+    outfile << x[u.size()][0] << "," << x[u.size()][1] << ","
+            << x[u.size()][2] << "," << x[u.size()][3];
+    outfile.close();
+    std::cout << x.size() << " " << u.size() << std::endl;
+    return;
+}
 
 void to_csv (std::string filename,
             float* x,
@@ -109,10 +135,12 @@ void to_csv2 (std::string filename,
             if(i < 1 && j < size) {
                 outfile << "," << u[j*a_dim + 0] << "," << u[j*a_dim + 1];
                 outfile << "," << u_prev[j*a_dim + 0] << "," << u_prev[j*a_dim + 1];
-            }else
+            } else {
                 outfile << ", , , , ";
-            if (i*size + j < sample) {
-                outfile << "," << cost[i*size+j] << "," << w[i*size+j];
+            }
+
+            if (i*(size+1) + j < sample) {
+                outfile << "," << cost[i*(size+1)+j] << "," << w[i*(size+1)+j];
             }
             outfile << std::endl;
         }
@@ -128,7 +156,8 @@ void parse_argument (int argc,
                      char const* argv[],
                      std::string& config,
                      std::string& mjkey,
-                     std::string& outfile);
+                     std::string& stepfile,
+                     std::string& trajfile);
 
 void parse_config (std::string& config_file,
                    std::string& model_file,
@@ -189,11 +218,14 @@ int main (int argc, char const* argv[]) {
 
     std::string config_file;
     std::string mjkey_file;
-    std::string out_file;
+    std::string out_step_file;
+    std::string out_traj_file;
     std::string model_file;
     std::string cost_type;
     // will store the next action.
     float* next_act;
+
+    std::size_t t(0);
 
     int n;
     int state_dim;
@@ -214,11 +246,17 @@ int main (int argc, char const* argv[]) {
     float* nabla;
     float* weight;
 
-    bool save = true;
-    bool done=false;
+    bool save_step = false;
+    bool save_traj = true;
+    bool done = false;
+
+    std::vector<std::vector<float>> u;
+    std::vector<std::vector<float>> x;
+    std::vector<float> tmp_u;
+    std::vector<float> tmp_x;
 
 
-    parse_argument(argc, argv, config_file, mjkey_file, out_file);
+    parse_argument(argc, argv, config_file, mjkey_file, out_step_file, out_traj_file);
 
     parse_config(config_file,
                  model_file,
@@ -269,6 +307,12 @@ int main (int argc, char const* argv[]) {
     init_action_seq(init_actions, act_dim, steps);
 
     model->memcpy_set_data(init_state, init_actions, goal, cost_q);
+    tmp_x.push_back(init_state[0]);
+    tmp_x.push_back(init_state[1]);
+    tmp_x.push_back(init_state[2]);
+    tmp_x.push_back(init_state[3]);
+    x.push_back(tmp_x);
+    tmp_x.clear();
 
     // run the multiple simulation on the device.
     float* u_prev = (float*) malloc(sizeof(float)*steps*act_dim);
@@ -278,24 +322,47 @@ int main (int argc, char const* argv[]) {
         model->get_act(next_act);
         //t2 = std::chrono::system_clock::now();
         //fp_ms += t2 - t1;
+        std::cout << "next_act: " << next_act[0] << " " << next_act[1] << std::endl;
         done = env.simulate(next_act);
-        //std::cout << "next_act: " << next_act[0] << ", " << next_act[1] << '\n';
         env.get_x(init_state);
+
+        tmp_u.push_back(next_act[0]);
+        tmp_u.push_back(next_act[1]);
+        u.push_back(tmp_u);
+        tmp_u.clear();
+
+        tmp_x.push_back(init_state[0]);
+        tmp_x.push_back(init_state[1]);
+        tmp_x.push_back(init_state[2]);
+        tmp_x.push_back(init_state[3]);
+        x.push_back(tmp_x);
+        tmp_x.clear();
+
+        if (save_step) {
+            float* h_x = (float*) malloc(sizeof(float)*n*(steps+1)*state_dim);
+            float* h_u = (float*) malloc(sizeof(float)*steps*act_dim);
+            float* h_e = (float*) malloc(sizeof(float)*n*steps*act_dim);
+            //float* u_prev = (float*) malloc(sizeof(float)*steps*act_dim);
+
+            model->get_inf(h_x, h_u, h_e, cost, beta, nabla, weight);
+            std::cout << out_step_file + std::to_string(t) << std::endl;
+            to_csv2(out_step_file + std::to_string(t), h_x, h_u, u_prev, h_e, cost, beta, nabla, weight, n, steps, state_dim, act_dim);
+            free(h_x);
+            free(h_u);
+            free(h_e);
+        }
+        //std::cout << "next_act: " << next_act[0] << ", " << next_act[1] << std::endl;
+        //std::cout << "Position: " << init_state[0] << ", " << init_state[1] << std::endl;
+
         model->set_x(init_state);
+
+        t += 1;
     }
 
-    if(save){
-        float* h_x = (float*) malloc(sizeof(float)*n*(steps+1)*state_dim);
-        float* h_u = (float*) malloc(sizeof(float)*steps*act_dim);
-        float* h_e = (float*) malloc(sizeof(float)*n*steps*act_dim);
-        float* u_prev = (float*) malloc(sizeof(float)*steps*act_dim);
-
-        model->get_inf(h_x, h_u, h_e, cost, beta, nabla, weight);
-        to_csv2(out_file, h_x, h_u, u_prev, h_e, cost, beta, nabla, weight, n, steps, state_dim, act_dim);
-        free(h_x);
-        free(h_u);
-        free(h_e);
+    if (save_traj) {
+        to_csv_traj(out_traj_file, x, u);
     }
+
     free(u_prev);
 
     std::cout << "Freeing memory... : " << std::flush;
@@ -317,7 +384,8 @@ void parse_argument (int argc,
                      char const* argv[],
                      std::string& config,
                      std::string& mjkey,
-                     std::string& outfile) {
+                     std::string& stepfile,
+                     std::string& trajfile) {
     try {
 
         TCLAP::CmdLine cmd("Mppi controller", ' ', "0.0");
@@ -337,19 +405,28 @@ void parse_argument (int argc,
                                               "string",
                                               cmd);
 
-        TCLAP::ValueArg<std::string> outArg("o",
-                                            "out",
-                                            "Outpute file",
-                                            false,
-                                            "to_plot.csv",
-                                            "string",
-                                            cmd);
+        TCLAP::ValueArg<std::string> outStepArg("s",
+                                                "step-save",
+                                                "Step save output file",
+                                                false,
+                                                "to_plot.csv",
+                                                "string",
+                                                cmd);
+
+        TCLAP::ValueArg<std::string> ouTrajtArg("t",
+                                                "traj-save",
+                                                "traj save output file",
+                                                false,
+                                                "traj_to_plot.csv",
+                                                "string",
+                                                cmd);
 
         cmd.parse(argc, argv);
 
         config = configArg.getValue();
         mjkey = mjkeyArg.getValue();
-        outfile = outArg.getValue();
+        stepfile = outStepArg.getValue();
+        trajfile = ouTrajtArg.getValue();
 
         std::cout << "Argument parsed" << std::endl;
 
@@ -529,7 +606,7 @@ void parse_config (std::string& config_file,
     tmp_cost_q = nullptr;
     tmp_goal = nullptr;
 
-    std::cout << "N " << samples << " STEPS: " << horizon << " State dim: " << state_dim << std::endl;
+    std::cout << "N " << samples << " steps: " << horizon << " State dim: " << state_dim << std::endl;
 
 }
 

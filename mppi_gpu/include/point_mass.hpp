@@ -13,7 +13,6 @@
 #include <fstream>
 
 
-#define STEPS 50
 #define TOL 1e-6
 
 
@@ -179,7 +178,7 @@ __global__ void shift_act (float* u, float* u_swap, int a_dim, int samples);
 
 __global__ void set_x_kernel (PointMassModelGpu* models, float* x_i, int n);
 
-
+__global__ void sum_red_adim (float* v, float* v_r, int n, int a_dim);
 
 
 #endif

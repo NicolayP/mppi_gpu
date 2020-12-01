@@ -8,7 +8,6 @@ __host__ __device__ PointMassModelGpu::PointMassModelGpu () {
     _u = nullptr;
     _e = nullptr;
     _tau = 0;
-    _t = 1;
     _id = 0;
     /*
     // Local copy of the weight and the goal.
@@ -49,7 +48,6 @@ __host__ __device__ void PointMassModelGpu::init (float* x,
     _u_gain = u_gain;
     _u_size = u_size;
 
-    _t = 1;
     // Local copy of the weight and the goal.
     _w = (float*) malloc(sizeof(float)*_x_size);
     _g = (float*) malloc(sizeof(float)*_x_size);
@@ -112,7 +110,7 @@ __host__ __device__ float PointMassModelGpu::run (curandState* state) {
     for (int t = 0; t < _tau; t++ ){
         step(state, t);
     }
-    _c += _cost.final_cost(&_x[(_tau-1)*_x_size], _id);
+    _c += _cost.final_cost(&_x[(_tau)*_x_size], _id);
     //printf("_c[%d][%d]: %f\n", _id, (_tau-1), _c);
     // save action to global pointer
     save_e();
