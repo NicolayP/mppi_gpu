@@ -29,7 +29,7 @@ protected:
   mjModel* m;
   mjData* d;
   bool view_;
-   mjtNum _simend;
+  mjtNum _simend;
 
   mjvCamera cam;                      // abstract camera
   mjvOption opt;                      // visualization options

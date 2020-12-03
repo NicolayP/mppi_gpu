@@ -307,10 +307,10 @@ int main (int argc, char const* argv[]) {
     init_action_seq(init_actions, act_dim, steps);
 
     model->memcpy_set_data(init_state, init_actions, goal, cost_q);
-    tmp_x.push_back(init_state[0]);
-    tmp_x.push_back(init_state[1]);
-    tmp_x.push_back(init_state[2]);
-    tmp_x.push_back(init_state[3]);
+
+    for (int i=0; i < state_dim; i++) {
+        tmp_x.push_back(init_state[i]);
+    }
     x.push_back(tmp_x);
     tmp_x.clear();
 
@@ -322,19 +322,24 @@ int main (int argc, char const* argv[]) {
         model->get_act(next_act);
         //t2 = std::chrono::system_clock::now();
         //fp_ms += t2 - t1;
-        std::cout << "next_act: " << next_act[0] << " " << next_act[1] << std::endl;
+        std::cout << "next_act: ";
+        for (int i=0; i < act_dim; i++) {
+            std::cout << next_act[i] << " ";
+
+        }
+        std::cout << std::endl;
         done = env.simulate(next_act);
         env.get_x(init_state);
 
-        tmp_u.push_back(next_act[0]);
-        tmp_u.push_back(next_act[1]);
+        for (int i=0; i < act_dim; i++) {
+            tmp_u.push_back(next_act[i]);
+        }
         u.push_back(tmp_u);
         tmp_u.clear();
 
-        tmp_x.push_back(init_state[0]);
-        tmp_x.push_back(init_state[1]);
-        tmp_x.push_back(init_state[2]);
-        tmp_x.push_back(init_state[3]);
+        for (int i=0; i < state_dim; i++) {
+            tmp_x.push_back(init_state[i]);
+        }
         x.push_back(tmp_x);
         tmp_x.clear();
 
@@ -387,7 +392,6 @@ void parse_argument (int argc,
                      std::string& stepfile,
                      std::string& trajfile) {
     try {
-
         TCLAP::CmdLine cmd("Mppi controller", ' ', "0.0");
         TCLAP::ValueArg<std::string> configArg("c",
                                                "config",

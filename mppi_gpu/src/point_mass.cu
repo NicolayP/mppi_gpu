@@ -413,7 +413,7 @@ void PointMassModel::update_act () {
             //print_u<<<1, 1>>>(v_r, GRID_SIZE, act_dim);
             //std::cout << "Run only once" << std::endl;
             //std::cout << "steps: " << _steps << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
-            update_act_kernel <<<1, BLOCK_SIZE >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
+            update_act_kernel <<<1, BLOCK_SIZE, sizeof(float)*SHMEM_SIZE*_act_dim >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
             cudaDeviceSynchronize();
 
             //std::cout << "Only : " << t << std::endl;
@@ -426,7 +426,7 @@ void PointMassModel::update_act () {
             //std::cout << "Run first, GRID_SIZE: " << GRID_SIZE << std::endl;
             // insure at least one pass.
             //std::cout << "steps: " << _steps << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
-            update_act_kernel <<<GRID_SIZE, BLOCK_SIZE >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
+            update_act_kernel <<<GRID_SIZE, BLOCK_SIZE, sizeof(float)*SHMEM_SIZE*_act_dim >>> (v_r, _weights, _e, _steps, t, _act_dim, n);
 
             n = GRID_SIZE;
             GRID_SIZE = n / ( BLOCK_SIZE * _act_dim )  + 1 ;
@@ -440,7 +440,7 @@ void PointMassModel::update_act () {
             while (GRID_SIZE > 1 )
             {
                 //std::cout << "Mid" << std::endl;
-                sum_red_adim << <GRID_SIZE, BLOCK_SIZE >> > (v_r, v_r, n, _act_dim);
+                sum_red_adim << <GRID_SIZE, BLOCK_SIZE, sizeof(float)*SHMEM_SIZE*_act_dim >> > (v_r, v_r, n, _act_dim);
                 n = GRID_SIZE;
                 GRID_SIZE = n / ( BLOCK_SIZE * 2 )  + 1 ;
                 cudaDeviceSynchronize();
@@ -454,7 +454,7 @@ void PointMassModel::update_act () {
             }
             //std::cout << "Run last" << std::endl;
             //std::cout << "steps: " << _steps << " t: " << t << " a_dim: " << act_dim << " n: " << _n_sim << std::endl;
-            sum_red_adim <<<1, BLOCK_SIZE >>> (v_r, v_r, n, _act_dim);
+            sum_red_adim <<<1, BLOCK_SIZE, sizeof(float)*SHMEM_SIZE*_act_dim >>> (v_r, v_r, n, _act_dim);
             cudaDeviceSynchronize();
             /*
             std::cout << "Last :" << t << std::endl;
@@ -667,7 +667,7 @@ __global__ void sum_red (float* v, float* v_r, int n) {
 }
 
 __global__ void sum_red_adim (float* v, float* v_r, int n, int act_dim) {
-    __shared__ float partial_sum[SHMEM_SIZE*2];
+    extern __shared__ float partial_sum[];
 
     int i = blockIdx.x * (blockDim.x * 2) * act_dim + threadIdx.x * act_dim;
     int shift = blockDim.x*act_dim;
@@ -835,7 +835,7 @@ __global__ void update_act_kernel (float* v_r,
                                   int n) {
 
     // Allocate shared memory * 2 for the action dim
-    __shared__ float partial_acts[SHMEM_SIZE*2];
+    extern __shared__ float partial_acts[];
 
     int i = blockIdx.x * (blockDim.x*2) * act_dim * steps + t * act_dim + threadIdx.x*steps*act_dim;
     int shift = blockDim.x*steps*act_dim;

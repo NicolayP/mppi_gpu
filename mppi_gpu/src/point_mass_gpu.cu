@@ -56,8 +56,9 @@ __host__ __device__ void PointMassModelGpu::init (float* x,
     glob_e = e;
 
     _inv_s = (float*) malloc(sizeof(float)*_u_size);
-    _inv_s[0] = 1.0;
-    _inv_s[1] = 1.0;
+    for (int i=0; i < _u_size; i++) {
+        _inv_s[i] = 1.0;
+    }
 
     for (int i = 0; i < _x_size; i++)
     {
@@ -66,8 +67,9 @@ __host__ __device__ void PointMassModelGpu::init (float* x,
     }
 
     for (int i = 0; i < _tau; i++){
-        _e[i*_u_size + 0] = glob_e[i*_u_size + 0];
-        _e[i*_u_size + 1] = glob_e[i*_u_size + 1];
+        for (int j = 0; j < _u_size; j++) {
+            _e[i*_u_size + j] = glob_e[i*_u_size + j];
+        }
     }
     _cost = Cost(_w, _x_size, _g, _x_size, lambda, _inv_s, u_size);
     _c = 0;
@@ -92,13 +94,13 @@ __host__ __device__ void PointMassModelGpu::step (curandState* state, int t) {
     _e[(t)*_u_size + 1] += 0; //cpu random uniform;
 #endif
 
-    for(int i=0; i < 2; i++){
+    for(int i=0; i < _u_size; i++){
         _x[(t+1)*_x_size+i] = _x_gain[0]*_x[(t)*_x_size+i] +
-        _x_gain[1]*_x[(t)*_x_size+i+2] +
+        _x_gain[1]*_x[(t)*_x_size+i+_x_size/2] +
         _u_gain[0]*(_u[(t)*_u_size + i] + _e[(t)*_u_size + i]);
 
         _x[(t+1)*_x_size+i+2] = _x_gain[2]*_x[(t)*_x_size+i] +
-        _x_gain[3]*_x[(t)*_x_size+i+2] +
+        _x_gain[3]*_x[(t)*_x_size+i+_x_size/2] +
         _u_gain[1]*(_u[(t)*_u_size + i] + _e[(t)*_u_size + i]);
     }
     _c += _cost.step_cost(&_x[(t+1)*_x_size], &_u[(t)*_u_size], &_e[(t)*_u_size], _id, t);
@@ -118,10 +120,10 @@ __host__ __device__ float PointMassModelGpu::run (curandState* state) {
 }
 
 __host__ __device__ void PointMassModelGpu::save_e () {
-    for (int t = 0; t < _tau; t++)
-    {
-        glob_e[(t)*_u_size] = _e[(t)*_u_size];
-        glob_e[(t)*_u_size + 1] = _e[(t)*_u_size + 1];
+    for (int t = 0; t < _tau; t++) {
+        for (int j=0; j < _u_size; j++) {
+            glob_e[(t)*_u_size+j] = _e[(t)*_u_size+j];
+        }
     }
 }
 
