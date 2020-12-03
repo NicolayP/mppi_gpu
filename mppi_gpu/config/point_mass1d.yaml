@@ -1,0 +1,22 @@
+---
+    action-dim: 1
+    cost:
+      type: quadratic
+      w:
+        - 1
+        - 50
+    dt: 0.1
+    env: ../envs/point_mass1d.xml
+    goal:
+      - 1
+      - 0
+    horizon: 50
+    init-act:
+      - 0.0
+    lambda: 1
+    max-a:
+      - 1
+    noise:
+      - 0.25
+    samples: 3000
+    state-dim: 2

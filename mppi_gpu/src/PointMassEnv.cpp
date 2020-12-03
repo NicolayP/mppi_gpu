@@ -37,7 +37,7 @@ PointMassEnv::PointMassEnv(const char* modelFile, const char* mjkey, bool view) 
 
   d = mj_makeData(m);
 
-  std::cout << "Loaded model and Data" << '\n';
+  std::cout << "Loaded model and Data" << std::endl;
 
   if(view_){
     // init GLFW, create window, make OpenGL context current, request v-sync
@@ -57,7 +57,7 @@ PointMassEnv::PointMassEnv(const char* modelFile, const char* mjkey, bool view) 
     mjr_makeContext(m, &con, mjFONTSCALE_100);
   }
 
-  _simend = d->time + 0.0001+10;
+  _simend = d->time + 0.0001 + 10;
 }
 
 PointMassEnv::~PointMassEnv() {
@@ -92,8 +92,10 @@ bool PointMassEnv::simulate(float* u) {
     }
     mjtNum simstart = d->time;
 
-    d->ctrl[0] = u[0];
-    d->ctrl[1] = u[1];
+    for (int i=0; i < m->nu; i++) {
+        d->ctrl[i] = u[i];
+    }
+
 
     while( d->time - simstart < 1.0/60.0 ){
       mj_step(m, d);
@@ -135,18 +137,26 @@ bool PointMassEnv::simulate(float* u) {
 }
 
 void PointMassEnv::step(float* x, float* u) {
-  d->ctrl[0] = u[0];
-  d->ctrl[1] = u[1];
-  mj_step(m, d);
-  x[0] = d->qpos[0];
-  x[1] = d->qpos[1];
-  x[2] = d->qvel[0];
-  x[3] = d->qvel[1];
+    for (int i=0; i < m->nu; i++) {
+        d->ctrl[i] = u[i];
+    }
+    mj_step(m, d);
+
+    for (int i=0; i < m->nq; i++) {
+        x[i] = d->qpos[i];
+    }
+
+    for (int i=0; i < m->nv; i++) {
+        x[i+m->nq] = d->qvel[i];
+    }
 }
 
 void PointMassEnv::get_x(float* x) {
-    x[0] = d->qpos[0];
-    x[1] = d->qpos[1];
-    x[2] = d->qpos[2];
-    x[3] = d->qpos[3];
+    for (int i=0; i < m->nq; i++) {
+        x[i] = d->qpos[i];
+    }
+
+    for (int i=0; i <  m->nv; i++) {
+        x[i+m->nq] = d->qvel[i];
+    }
 }
