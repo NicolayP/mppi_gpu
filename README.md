@@ -17,8 +17,13 @@
   - [x] compute the expodential of the cost - beta only once.
   - [x] compute inverse of nabla and lambda only once.
   - [x] finish algo as mentioned in the point_mass.cu example.
-  - [ ] adapt to run the code with different actions dimensions. 
+  - [X] adapt to run the code with different actions dimensions. 
   - [X] try mujoco simulation.
+  - [ ] add lambda in the controller parameters
+  - [ ] inline function for index computations
+  - [ ] create datastructure for the controller internal variables
+  - [ ] decouple x into q and q_dot.
+  - [ ] evaluate error between model and world ( simulation atm).
   - [ ] generalize the code.
   - [ ] start UUV integration (add for ros expert help).
   - [ ] write AUV math model.
@@ -54,3 +59,7 @@
   - completed algorithm. Need to send the data to the robot and shift the action vector by one unit and initalize U[T-1]. Haven't looked at the actual values of the controller. Implement get_inf to retrieve all the info, check the values and ultimately write a test code.
 
   - various corrections to generalize the code.
+
+  - added support for many input dimension system. 
+
+  - mujoco keybord and mouse support
