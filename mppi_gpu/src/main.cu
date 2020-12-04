@@ -26,6 +26,7 @@
 * on the host device.
 */
 
+
 void to_csv_traj (std::string filename,
                   std::vector<std::vector<float>> x,
                   std::vector<std::vector<float>> u) {
@@ -382,7 +383,6 @@ int main (int argc, char const* argv[]) {
     delete model;
     std::cout << "Done" << std::endl;
 
-    cudaDeviceReset();
 }
 
 void parse_argument (int argc,
