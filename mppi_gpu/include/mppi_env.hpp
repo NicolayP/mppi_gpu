@@ -8,33 +8,31 @@
 
 using namespace std;
 
+
 class Env{
 public:
-  friend ostream& operator<<(ostream& os, const Env& env);
-  virtual string print() const;
+    friend ostream& operator<<(ostream& os, const Env& env);
+    virtual string print() const;
 protected:
-  string info;
+    string info;
 
 };
 
 class PointMassEnv : public Env{
 public:
-  PointMassEnv(const char* modelFile, const char* mjkey, bool view=false);
-  virtual ~PointMassEnv();
-  string print() const override;
-  bool simulate(float* u);
-  void step(float* x, float* u);
-  void get_x(float* x);
-protected:
-  mjModel* m;
-  mjData* d;
-  bool view_;
-  mjtNum _simend;
+    PointMassEnv(const char* modelFile, const char* mjkey, bool view=false);
+    virtual ~PointMassEnv();
+    string print() const override;
+    bool simulate(float* u);
+    void step(float* x, float* u);
+    void get_x(float* x);
 
-  mjvCamera cam;                      // abstract camera
-  mjvOption opt;                      // visualization options
-  mjvScene scn;                       // abstract scene
-  mjrContext con;                     // custom GPU context
-  GLFWwindow* window;
+protected:
+    bool view_;
+    mjtNum _simend;
+
+
 };
+
+
 #endif
