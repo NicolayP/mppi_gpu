@@ -99,9 +99,10 @@ __host__ __device__ void PointMassModelGpu::step (curandState* state, int t) {
         _x_gain[1]*_x[(t)*_x_size+i+_x_size/2] +
         _u_gain[0]*(_u[(t)*_u_size + i] + _e[(t)*_u_size + i]);
 
-        _x[(t+1)*_x_size+i+2] = _x_gain[2]*_x[(t)*_x_size+i] +
+        _x[(t+1)*_x_size+i+_x_size/2] = _x_gain[2]*_x[(t)*_x_size+i] +
         _x_gain[3]*_x[(t)*_x_size+i+_x_size/2] +
         _u_gain[1]*(_u[(t)*_u_size + i] + _e[(t)*_u_size + i]);
+
     }
     _c += _cost.step_cost(&_x[(t+1)*_x_size], &_u[(t)*_u_size], &_e[(t)*_u_size], _id, t);
     //printf("_c[%d][%d]: %f\n", _id, t, _c);

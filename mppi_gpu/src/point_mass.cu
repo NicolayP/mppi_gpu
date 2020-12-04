@@ -13,7 +13,7 @@
 
 
 #define SIZE 256
-#define SHMEM_SIZE 256
+#define SHMEM_SIZE SIZE
 
 
 PointMassModel::PointMassModel (int nb_sim,
@@ -53,7 +53,6 @@ PointMassModel::PointMassModel (int nb_sim,
     float lambda[0];
     lambda[0] = 1.;
 
-    int GRID_SIZE = _n_sim / SIZE / 2 + 1;
     // *Allocate the data on tahe GPU.*
     std::cout << "Allocating Space... : " << std::flush;
     // allocate space for all our simulation objects.
@@ -88,11 +87,11 @@ PointMassModel::PointMassModel (int nb_sim,
 
 
     // Set gain memory
-    CUDA_CALL_CONST(cudaMalloc((void**)&_state_gain, sizeof(float)*_state_dim));
-    CUDA_CALL_CONST(cudaMalloc((void**)&_act_gain, sizeof(float)*_act_dim));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_state_gain, sizeof(float)*4));
+    CUDA_CALL_CONST(cudaMalloc((void**)&_act_gain, sizeof(float)*2));
 
-    CUDA_CALL_CONST(cudaMemcpy(_state_gain, state, sizeof(float)*_state_dim, cudaMemcpyHostToDevice));
-    CUDA_CALL_CONST(cudaMemcpy(_act_gain, act, sizeof(float)*_act_dim, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_state_gain, state, sizeof(float)*4, cudaMemcpyHostToDevice));
+    CUDA_CALL_CONST(cudaMemcpy(_act_gain, act, sizeof(float)*2, cudaMemcpyHostToDevice));
 
     CUDA_CALL_CONST(cudaMalloc((void**)&_rng_states, sizeof(curandState_t)*_n_sim));
 
