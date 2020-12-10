@@ -1,0 +1,12 @@
+<launch>
+    <node type="node" name="mppi_gpu" pkg="mppi_gpu" output="screen">
+        <param name="config_file" type="string" value="$(find mppi_gpu)/config/point_mass.yaml" />
+        <!-- <param name="mujoco_key_file" type="string" value="$(find mppi_gpu)/lib/contrib/mjkey.txt" /> -->
+        <param name="out_step_file" type="string" value="to_plot.csv" />
+        <param name="out_traj_file" type="string" value="traj_to_plot.csv" />
+        <param name="model_file" type="string" value="$(find mppi_gpu)/envs/point_mass.xml" />
+        <param name="use_thruster_manager" type="bool" value="false" />
+        
+    </node>
+
+</launch>
