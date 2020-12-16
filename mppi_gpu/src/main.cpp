@@ -259,7 +259,8 @@ int main (int argc, char **argv) {
     std::vector<std::vector<float>> x;
     std::vector<float> tmp_u;
     std::vector<float> tmp_x;
-
+    ros::Publisher auv_command_pub;
+    ros::Publisher thruster_pub;
     ros::init (argc, argv, "mppi_gpu");
     ros::start ();
     ros::NodeHandle node_handle;
@@ -276,11 +277,11 @@ int main (int argc, char **argv) {
 
 
     if(use_thruster_manager){
-        ros::Publisher auv_command_pub = node_handle.advertise<uuv_auv_control_allocator::AUVCommand>("/auv_command_output", 1);
+        auv_command_pub = node_handle.advertise<uuv_auv_control_allocator::AUVCommand>("/auv_command_output", 1);
     }
 
     else{
-        ros::Publisher thruster_pub = node_handle.advertise<geometry_msgs::WrenchStamped>("/thruster_output", 1);
+        thruster_pub = node_handle.advertise<geometry_msgs::WrenchStamped>("/thruster_output", 1);
     }
 
     // ros::spin ();
@@ -399,7 +400,7 @@ int main (int argc, char **argv) {
             // Add data to message
             // msg.header = 
             msg.surge_speed = 0; //TEMP
-            msg.command = command;
+            msg.command = command.wrench;
             auv_command_pub.publish(msg);
         }
 
