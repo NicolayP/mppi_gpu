@@ -53,7 +53,6 @@ PointMassModel::PointMassModel (int nb_sim,
     float lambda[0];
     lambda[0] = 1.;
 
-    int GRID_SIZE = _n_sim / SIZE / 2 + 1;
     // *Allocate the data on tahe GPU.*
     std::cout << "Allocating Space... : " << std::flush;
     // allocate space for all our simulation objects.

@@ -3,3 +3,4 @@
 gpu*
 */lib/contrib/mjkey.txt
 *.csv
+.vscode
