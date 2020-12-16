@@ -64,3 +64,24 @@ target_link_libraries(${BIN_NAME} GL GLU glut)
 target_link_libraries(${BIN_NAME} ${GLEW_LIBRARIES} glfw)
 
 target_link_libraries(${BIN_NAME} ${catkin_LIBRARIES}  ${YAMLCPP_LIBRARIES})
+
+
+set(MISS_NAME miss)
+
+add_executable(${MISS_NAME} src/model_missmatch.cpp src/point_mass.cu src/point_mass_gpu.cu src/mppi_utils.cu src/cost.cu src/PointMassEnv.cpp src/Env.cpp)
+
+set_property(TARGET ${MISS_NAME} PROPERTY CUDA_ARCHITECTURES 70-real)
+
+target_link_options(${MISS_NAME} PRIVATE $<DEVICE_LINK:-arch=sm_70>)
+
+target_compile_options(${MISS_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -rdynamic -g -G -arch sm_70>)
+
+set_target_properties(${MISS_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+
+target_link_libraries(${MISS_NAME} ${LIB_MUJOCO})
+
+target_link_libraries(${MISS_NAME} GL GLU glut)
+
+target_link_libraries(${MISS_NAME} ${GLEW_LIBRARIES} glfw)
+
+target_link_libraries(${MISS_NAME} ${catkin_LIBRARIES}  ${YAMLCPP_LIBRARIES})
