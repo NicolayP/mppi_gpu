@@ -13,6 +13,8 @@
 
 #include <tclap/CmdLine.h>
 #include <yaml-cpp/yaml.h>
+
+typedef std::chrono::high_resolution_clock Clock;
 /*
 * Same as previous example only this time the parallized
 * objects contain a pointer to the data. This will show
@@ -217,6 +219,10 @@ void verify_parse (int n,
 
 int main (int argc, char const* argv[]) {
 
+    auto t1 = Clock::now();
+    auto t2 = Clock::now();
+    std::chrono::duration<double, std::milli> fp_ms;
+
     std::string config_file;
     std::string mjkey_file;
     std::string out_step_file;
@@ -319,10 +325,12 @@ int main (int argc, char const* argv[]) {
     float* u_prev = (float*) malloc(sizeof(float)*steps*act_dim);
     while(!done){
         model->get_u(u_prev);
-        //t1 = std::chrono::system_clock::now();
+
+        t1 = std::chrono::system_clock::now();
         model->get_act(next_act);
-        //t2 = std::chrono::system_clock::now();
-        //fp_ms += t2 - t1;
+        t2 = std::chrono::system_clock::now();
+        fp_ms += (t2 - t1);
+
         std::cout << "next_act: ";
         for (int i=0; i < act_dim; i++) {
             std::cout << next_act[i] << " ";
@@ -365,6 +373,11 @@ int main (int argc, char const* argv[]) {
         t += 1;
     }
 
+    double delta = fp_ms.count();
+    std::cout << "Average controller execution time: " << delta/t << std::endl;
+    std::cout << "T: " << t << std::endl;
+    std::cout << "Delta: " << delta << std::endl;
+
     if (save_traj) {
         to_csv_traj(out_traj_file, x, u);
     }
@@ -397,7 +410,7 @@ void parse_argument (int argc,
                                                "config",
                                                "Config file",
                                                false,
-                                               "../config/point_mass.yaml",
+                                               "../config/point_mass2d.yaml",
                                                "string",
                                                cmd);
 
