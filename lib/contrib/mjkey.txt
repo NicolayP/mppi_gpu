@@ -1,0 +1,20 @@
+MuJoCo Pro Personal license activation key, number 72345, type 6.
+
+Issued to Pierre Nicolay <pon1@hw.ac.uk>.
+
+Expires May 12, 2021.
+
+This file activates MuJoCo Pro on a single computer with id:
+LINUX_b601md_6f9vf985c82e4f18b11d19dede1e96fe470
+
+Do not modify this file. Its entire content, including the
+plain text section, is used by the activation manager.
+
+e25a4dace2f675f35fb1a5954cab40c63b9cd0096af291af91a5bd869e115c1c
+210ea0e4625fa7d85c03c7d4b17674dda929f001263eb80492e52e870b99aa9a
+64d8f542c3cc6f115d4a757ee88ca42db91b49317c0980223449a3b1b57767cb
+e685cd25ed9e9537c94631418263d2e715c2c5b8c373222612dd7ad9f4754682
+63150cce62e28e0c1ac0b4da917d32c5635a0e73314495eb5cd9bf00da91fbae
+6f0832e2b0aa0341326da2c590c8beda0648c88b48cf54b56a3417696f4718d3
+8a16f1268527b85b88abd08bf4491d5b07df49265061f6280a2ef902437da88e
+b8279f481cc4e191613b7a830b95c1cb5bd95158f2142278956721e4c3e259fb
