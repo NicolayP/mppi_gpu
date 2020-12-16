@@ -16,7 +16,7 @@ def getMetaData(csvfile):
     size /= sample
     return int(sample), int(size)
 
-def plot_file(file):
+def plot_file(file, color, step):
     x = []
     y = []
     vx = []
@@ -106,14 +106,14 @@ def plot_file(file):
         for i in range(samples):
             u_next[t, 0] += weight[i]*ex[i, t]
             u_next[t, 1] += weight[i]*ey[i, t]
-    print(u_next[0, :])
+    #print(u_next[0, :])
 
     #print(exp)
     #print(nabla)
     #print(weight)
 
     #print(np.abs(weight-w))
-
+    '''
     df = pd.DataFrame({"c_gpu" : c,
                        "c_python" : cost,
                        "c_diff" : cost - c,
@@ -128,15 +128,14 @@ def plot_file(file):
                        "uy_gpu": uy,
                        "uy_python": u_next[:, 1],
                        "uy_diff": uy - u_next[:, 1]})
-    df.to_csv("act_next.csv", index=False)
+    df.to_csv("act_next.csv", index=False)'''
 
-    plt.figure(0)
     circle1 = plt.Circle((1, 0), 0.01, color='r', fill=False)
 
     ax = plt.gca()
-    ax.cla()
-    ax.set_xlim((-1.5, 1.5))
-    ax.set_ylim((-1.5, 1.5))
+    #ax.cla()
+    ax.set_xlim((-0.2, 1.1))
+    ax.set_ylim((-0.2, 0.2))
     ax.add_artist(circle1)
     i = np.argmax(w)
     j = np.argmax(weight)
@@ -145,13 +144,15 @@ def plot_file(file):
     #print(j)
     #print(weight[j])
     #ax.plot(x[j], y[j], '-b')
+    ax.plot(x[0], y[0], color, label=step)
     for id, sample in enumerate(x):
         #if w[id] > 0.00001:
-        ax.plot(x[id], y[id], '-b')
+        ax.plot(x[id], y[id], color)
         #ax.quiver(x[id, 1::2], y[id, 1::2], vx[id, 1::2], vy[id, 1::2])
         #ax.yscale('linear')
         #ax.xscale('linear')
     print(i)
+    print(j)
     ax.plot(x[i], y[i], '-r')
 
 
@@ -163,8 +164,19 @@ def plot_file(file):
         plt.subplot(212)
         plt.plot(range(size), ey[id])
         '''
-    plt.show()
 
 
 if __name__ == '__main__':
-    plot_file("../build/to_plot.csv1")
+    plt.figure(0)
+    plot_file("../build/to_plot.csv0", '-b', 't=0')
+    plot_file("../build/to_plot.csv250", 'g', 't=250')
+    plot_file("../build/to_plot.csv650", '-k', 't=650')
+    ax = plt.gca()
+    ax.set_title("Sample generation evolution at different timesteps")
+    ax.legend()
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+
+    #plot_file("../build/to_plot.csv750")
+
+    plt.show()

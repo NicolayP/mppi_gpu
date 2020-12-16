@@ -95,22 +95,23 @@ def plot_files(file):
 
         #ax.yscale('linear')
         #ax.xscale('linear')
-
-    for i in range(u_size):
         plt.figure(1)
         circle1 = plt.Circle((1, 0), 0.01, color='r', fill=False)
 
         ax = plt.gca()
         ax.cla()
-        ax.set_xlim((-1.5, 1.5))
-        ax.set_ylim((-1.5, 1.5))
+        ax.set_xlim((-0.5, 1.5))
+        ax.set_ylim((-0.5, 0.5))
         ax.add_artist(circle1)
         ax.plot(x, y, '-b')
-        ax.quiver(x[:i], y[:i], ux[:i], uy[:i])
-        file = "../build/to_plot.csv" + str(i)
-        best_x, best_y = getBestSample(file)
-        ax.plot(best_x, best_y, '-r')
-        plt.show()
+        '''
+        for i in range(u_size):
+            ax.quiver(x[:i], y[:i], ux[:i], uy[:i])
+            file = "../build/to_plot.csv" + str(i)
+            best_x, best_y = getBestSample(file)
+            ax.plot(best_x, best_y, '-r')
+        '''
+    plt.show()
 
 
 
