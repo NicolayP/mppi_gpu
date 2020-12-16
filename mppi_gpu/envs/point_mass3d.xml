@@ -32,7 +32,7 @@ See LICENSE file for legal notices. LICENSE must be kept together with this file
         </body>
 
         <!-- Target -->
-        <site name="target" pos="1.0 0.5 2.5" rgba="0.6 0.2 0.2 0.2" size=".07" type="sphere" />
+        <site name="target" pos="1.0 0.5 .75" rgba="0.6 0.2 0.2 0.2" size=".07" type="sphere" />
 
     </worldbody>
 
